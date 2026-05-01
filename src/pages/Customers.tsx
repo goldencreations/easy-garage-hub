@@ -30,6 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 
 export default function Customers() {
+  const navigate = useNavigate();
   const [list, setList] = useState(initialCustomers);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -132,7 +133,7 @@ export default function Customers() {
               {filtered.map((c) => {
                 const owned = cars.filter((v) => v.customerId === c.id);
                 return (
-                  <TableRow key={c.id}>
+                  <TableRow key={c.id} className="cursor-pointer hover:bg-muted/40" onClick={() => navigate(`/customers/${c.id}`)}>
                     <TableCell className="font-semibold">{c.name}</TableCell>
                     <TableCell>{c.phone}</TableCell>
                     <TableCell className="hidden md:table-cell">{c.email}</TableCell>
@@ -140,9 +141,9 @@ export default function Customers() {
                     <TableCell>
                       <Badge variant="secondary">{owned.length}</Badge>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end gap-1">
-                        <Button size="icon" variant="ghost" onClick={() => toast(`Viewing ${c.name}`)}>
+                        <Button size="icon" variant="ghost" onClick={() => navigate(`/customers/${c.id}`)}>
                           <Eye className="h-4 w-4" />
                         </Button>
                         <Button size="icon" variant="ghost" onClick={() => toast("Edit form")}>
