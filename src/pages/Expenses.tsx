@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Calendar, Loader2, Pencil, Plus, Receipt, Trash2, TrendingDown } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataCard } from "@/components/DataCard";
@@ -56,7 +56,7 @@ export default function Expenses() {
       }
 
       try {
-        const response = await listExpensesRequest(token);
+        const response = await listExpensesRequest(token, { search: query });
         setList(
           response.data.map((expense) => ({
             ...expense,
@@ -71,12 +71,9 @@ export default function Expenses() {
     };
 
     void loadExpenses();
-  }, [token]);
+  }, [token, query]);
 
-  const filtered = useMemo(() => {
-    const q = query.toLowerCase();
-    return list.filter((expense) => expense.title.toLowerCase().includes(q) || expense.category.toLowerCase().includes(q));
-  }, [list, query]);
+  const filtered = list;
 
   const total = list.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
   const now = new Date();

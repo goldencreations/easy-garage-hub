@@ -53,6 +53,24 @@ export default function Services() {
   const [stocks, setStocks] = useState<StockApi[]>([]);
   const [invoices, setInvoices] = useState<InvoiceApi[]>([]);
   const [query, setQuery] = useState("");
+  const [carSearch, setCarSearch] = useState("");
+  const [staffSearch, setStaffSearch] = useState("");
+  const [stockSearch, setStockSearch] = useState("");
+  const [editCarSearch, setEditCarSearch] = useState("");
+  const [editStaffSearch, setEditStaffSearch] = useState("");
+  const [editStockSearch, setEditStockSearch] = useState("");
+  const [carSelectOpen, setCarSelectOpen] = useState(false);
+  const [staffSelectOpen, setStaffSelectOpen] = useState(false);
+  const [stockSelectOpen, setStockSelectOpen] = useState(false);
+  const [editCarSelectOpen, setEditCarSelectOpen] = useState(false);
+  const [editStaffSelectOpen, setEditStaffSelectOpen] = useState(false);
+  const [editStockSelectOpen, setEditStockSelectOpen] = useState(false);
+  const [createCarOptions, setCreateCarOptions] = useState<CarApi[]>([]);
+  const [createStaffOptions, setCreateStaffOptions] = useState<StaffApi[]>([]);
+  const [createStockOptions, setCreateStockOptions] = useState<StockApi[]>([]);
+  const [editCarOptions, setEditCarOptions] = useState<CarApi[]>([]);
+  const [editStaffOptions, setEditStaffOptions] = useState<StaffApi[]>([]);
+  const [editStockOptions, setEditStockOptions] = useState<StockApi[]>([]);
   const [open, setOpen] = useState(false);
   const [carId, setCarId] = useState<string>("");
   const [staffId, setStaffId] = useState<string>("");
@@ -80,7 +98,7 @@ export default function Services() {
 
       try {
         const [servicesRes, carsRes, customersRes, staffRes, stocksRes, invoicesRes] = await Promise.all([
-          listServicesRequest(token),
+          listServicesRequest(token, { search: query }),
           listCarsRequest(token),
           listCustomersRequest(token),
           listStaffRequest(token),
@@ -93,6 +111,12 @@ export default function Services() {
         setStaffMembers(staffRes.data);
         setStocks(stocksRes.data);
         setInvoices(invoicesRes.data);
+        setCreateCarOptions(carsRes.data);
+        setCreateStaffOptions(staffRes.data);
+        setCreateStockOptions(stocksRes.data);
+        setEditCarOptions(carsRes.data);
+        setEditStaffOptions(staffRes.data);
+        setEditStockOptions(stocksRes.data);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Could not load services.");
       } finally {
@@ -101,17 +125,101 @@ export default function Services() {
     };
 
     void loadData();
-  }, [token]);
+  }, [token, query]);
 
-  const filtered = list.filter((s) => {
-    const car = cars.find((c) => String(c.id) === String(s.car_id));
-    const q = query.toLowerCase();
-    return (
-      (car?.plate_number ?? "").toLowerCase().includes(q) ||
-      s.problem.toLowerCase().includes(q) ||
-      (s.leading_staff?.name ?? "").toLowerCase().includes(q)
-    );
+  useEffect(() => {
+    const loadCreateCars = async () => {
+      if (!token || !carSelectOpen) return;
+      try {
+        const response = await listCarsRequest(token, { search: carSearch });
+        setCreateCarOptions(response.data);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not search cars.");
+      }
+    };
+    void loadCreateCars();
+  }, [token, carSelectOpen, carSearch]);
+
+  useEffect(() => {
+    const loadCreateStaff = async () => {
+      if (!token || !staffSelectOpen) return;
+      try {
+        const response = await listStaffRequest(token, { search: staffSearch });
+        setCreateStaffOptions(response.data);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not search staff.");
+      }
+    };
+    void loadCreateStaff();
+  }, [token, staffSelectOpen, staffSearch]);
+
+  useEffect(() => {
+    const loadCreateStocks = async () => {
+      if (!token || !stockSelectOpen) return;
+      try {
+        const response = await listStocksRequest(token, { search: stockSearch });
+        setCreateStockOptions(response.data);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not search stock.");
+      }
+    };
+    void loadCreateStocks();
+  }, [token, stockSelectOpen, stockSearch]);
+
+  useEffect(() => {
+    const loadEditCars = async () => {
+      if (!token || !editCarSelectOpen) return;
+      try {
+        const response = await listCarsRequest(token, { search: editCarSearch });
+        setEditCarOptions(response.data);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not search cars.");
+      }
+    };
+    void loadEditCars();
+  }, [token, editCarSelectOpen, editCarSearch]);
+
+  useEffect(() => {
+    const loadEditStaff = async () => {
+      if (!token || !editStaffSelectOpen) return;
+      try {
+        const response = await listStaffRequest(token, { search: editStaffSearch });
+        setEditStaffOptions(response.data);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not search staff.");
+      }
+    };
+    void loadEditStaff();
+  }, [token, editStaffSelectOpen, editStaffSearch]);
+
+  useEffect(() => {
+    const loadEditStocks = async () => {
+      if (!token || !editStockSelectOpen) return;
+      try {
+        const response = await listStocksRequest(token, { search: editStockSearch });
+        setEditStockOptions(response.data);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not search stock.");
+      }
+    };
+    void loadEditStocks();
+  }, [token, editStockSelectOpen, editStockSearch]);
+
+  const filtered = list;
+  const filteredCarsForCreate = createCarOptions.filter((c) => {
+    const owner = customers.find((x) => String(x.id) === String(c.customer_id));
+    const q = carSearch.toLowerCase();
+    return !q || c.plate_number.toLowerCase().includes(q) || (owner?.name ?? "").toLowerCase().includes(q);
   });
+  const filteredStaffForCreate = createStaffOptions.filter((member) => !staffSearch || member.name.toLowerCase().includes(staffSearch.toLowerCase()));
+  const filteredStocksForCreate = createStockOptions.filter((stock) => !stockSearch || stock.name.toLowerCase().includes(stockSearch.toLowerCase()));
+  const filteredCarsForEdit = editCarOptions.filter((c) => {
+    const owner = customers.find((x) => String(x.id) === String(c.customer_id));
+    const q = editCarSearch.toLowerCase();
+    return !q || c.plate_number.toLowerCase().includes(q) || (owner?.name ?? "").toLowerCase().includes(q);
+  });
+  const filteredStaffForEdit = editStaffOptions.filter((member) => !editStaffSearch || member.name.toLowerCase().includes(editStaffSearch.toLowerCase()));
+  const filteredStocksForEdit = editStockOptions.filter((stock) => !editStockSearch || stock.name.toLowerCase().includes(editStockSearch.toLowerCase()));
 
   const handleAdd = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -318,10 +426,18 @@ export default function Services() {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
                       <Label>Car *</Label>
-                      <Select value={carId} onValueChange={setCarId}>
+                      <Select value={carId} onValueChange={setCarId} open={carSelectOpen} onOpenChange={setCarSelectOpen}>
                         <SelectTrigger><SelectValue placeholder="Select car" /></SelectTrigger>
                         <SelectContent>
-                          {cars.map((c) => {
+                          <div className="p-2">
+                            <Input
+                              value={carSearch}
+                              onChange={(e) => setCarSearch(e.target.value)}
+                              onKeyDown={(e) => e.stopPropagation()}
+                              placeholder="Search car by plate/owner"
+                            />
+                          </div>
+                          {filteredCarsForCreate.map((c) => {
                             const owner = customers.find((x) => String(x.id) === String(c.customer_id));
                             return <SelectItem key={c.id} value={String(c.id)}>{c.plate_number} — {owner?.name}</SelectItem>;
                           })}
@@ -335,10 +451,18 @@ export default function Services() {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
                       <Label>Staff *</Label>
-                      <Select value={staffId} onValueChange={setStaffId}>
+                      <Select value={staffId} onValueChange={setStaffId} open={staffSelectOpen} onOpenChange={setStaffSelectOpen}>
                         <SelectTrigger><SelectValue placeholder="Assign" /></SelectTrigger>
                         <SelectContent>
-                          {staffMembers.map((member) => (
+                          <div className="p-2">
+                            <Input
+                              value={staffSearch}
+                              onChange={(e) => setStaffSearch(e.target.value)}
+                              onKeyDown={(e) => e.stopPropagation()}
+                              placeholder="Search staff by name"
+                            />
+                          </div>
+                          {filteredStaffForCreate.map((member) => (
                             <SelectItem key={member.id} value={String(member.id)}>{member.name}</SelectItem>
                           ))}
                         </SelectContent>
@@ -363,10 +487,23 @@ export default function Services() {
                     </div>
                     {stockItems.map((item, index) => (
                       <div key={`create-stock-${index}`} className="grid grid-cols-[1fr,120px,40px] gap-2">
-                        <Select value={item.stock_id} onValueChange={(value) => updateStockRow(index, "stock_id", value, false)}>
+                        <Select
+                          value={item.stock_id}
+                          onValueChange={(value) => updateStockRow(index, "stock_id", value, false)}
+                          open={stockSelectOpen}
+                          onOpenChange={setStockSelectOpen}
+                        >
                           <SelectTrigger><SelectValue placeholder="Select stock item" /></SelectTrigger>
                           <SelectContent>
-                            {stocks.map((stock) => (
+                            <div className="p-2">
+                              <Input
+                                value={stockSearch}
+                                onChange={(e) => setStockSearch(e.target.value)}
+                                onKeyDown={(e) => e.stopPropagation()}
+                                placeholder="Search stock items"
+                              />
+                            </div>
+                            {filteredStocksForCreate.map((stock) => (
                               <SelectItem key={stock.id} value={String(stock.id)}>{stock.name}</SelectItem>
                             ))}
                           </SelectContent>
@@ -406,10 +543,18 @@ export default function Services() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>Car *</Label>
-                  <Select value={editCarId} onValueChange={setEditCarId}>
+                  <Select value={editCarId} onValueChange={setEditCarId} open={editCarSelectOpen} onOpenChange={setEditCarSelectOpen}>
                     <SelectTrigger><SelectValue placeholder="Select car" /></SelectTrigger>
                     <SelectContent>
-                      {cars.map((c) => {
+                      <div className="p-2">
+                        <Input
+                          value={editCarSearch}
+                          onChange={(e) => setEditCarSearch(e.target.value)}
+                          onKeyDown={(e) => e.stopPropagation()}
+                          placeholder="Search car by plate/owner"
+                        />
+                      </div>
+                      {filteredCarsForEdit.map((c) => {
                         const owner = customers.find((x) => String(x.id) === String(c.customer_id));
                         return <SelectItem key={c.id} value={String(c.id)}>{c.plate_number} — {owner?.name}</SelectItem>;
                       })}
@@ -423,10 +568,18 @@ export default function Services() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>Staff *</Label>
-                  <Select value={editStaffId} onValueChange={setEditStaffId}>
+                  <Select value={editStaffId} onValueChange={setEditStaffId} open={editStaffSelectOpen} onOpenChange={setEditStaffSelectOpen}>
                     <SelectTrigger><SelectValue placeholder="Assign" /></SelectTrigger>
                     <SelectContent>
-                      {staffMembers.map((member) => (
+                      <div className="p-2">
+                        <Input
+                          value={editStaffSearch}
+                          onChange={(e) => setEditStaffSearch(e.target.value)}
+                          onKeyDown={(e) => e.stopPropagation()}
+                          placeholder="Search staff by name"
+                        />
+                      </div>
+                      {filteredStaffForEdit.map((member) => (
                         <SelectItem key={member.id} value={String(member.id)}>{member.name}</SelectItem>
                       ))}
                     </SelectContent>
@@ -451,10 +604,23 @@ export default function Services() {
                 </div>
                 {editStockItems.map((item, index) => (
                   <div key={`edit-stock-${index}`} className="grid grid-cols-[1fr,120px,40px] gap-2">
-                    <Select value={item.stock_id} onValueChange={(value) => updateStockRow(index, "stock_id", value, true)}>
+                    <Select
+                      value={item.stock_id}
+                      onValueChange={(value) => updateStockRow(index, "stock_id", value, true)}
+                      open={editStockSelectOpen}
+                      onOpenChange={setEditStockSelectOpen}
+                    >
                       <SelectTrigger><SelectValue placeholder="Select stock item" /></SelectTrigger>
                       <SelectContent>
-                        {stocks.map((stock) => (
+                        <div className="p-2">
+                          <Input
+                            value={editStockSearch}
+                            onChange={(e) => setEditStockSearch(e.target.value)}
+                            onKeyDown={(e) => e.stopPropagation()}
+                            placeholder="Search stock items"
+                          />
+                        </div>
+                        {filteredStocksForEdit.map((stock) => (
                           <SelectItem key={stock.id} value={String(stock.id)}>{stock.name}</SelectItem>
                         ))}
                       </SelectContent>

@@ -218,8 +218,11 @@ export function createAdminRequest(
   });
 }
 
-export function listAdminsRequest(token: string) {
-  return apiRequest<AdminUser[]>("/admins", {
+export function listAdminsRequest(token: string, params?: { search?: string; role?: "admin" | "user" | "" }) {
+  const query = new URLSearchParams();
+  if (params?.search?.trim()) query.set("search", params.search.trim());
+  if (params?.role) query.set("role", params.role);
+  return apiRequest<AdminUser[]>(`/admins${query.toString() ? `?${query.toString()}` : ""}`, {
     method: "GET",
     token,
   });
@@ -244,8 +247,10 @@ export function deleteAdminRequest(token: string, userId: string | number) {
   });
 }
 
-export function listCustomersRequest(token: string) {
-  return apiRequest<CustomerApi[]>("/customers", {
+export function listCustomersRequest(token: string, params?: { search?: string }) {
+  const query = new URLSearchParams();
+  if (params?.search?.trim()) query.set("search", params.search.trim());
+  return apiRequest<CustomerApi[]>(`/customers${query.toString() ? `?${query.toString()}` : ""}`, {
     method: "GET",
     token,
   });
@@ -281,8 +286,13 @@ export function deleteCustomerRequest(token: string, customerId: string | number
   });
 }
 
-export function listCarsRequest(token: string) {
-  return apiRequest<CarApi[]>("/cars", {
+export function listCarsRequest(token: string, params?: { search?: string; customer_id?: string | number }) {
+  const query = new URLSearchParams();
+  if (params?.search?.trim()) query.set("search", params.search.trim());
+  if (params?.customer_id !== undefined && params?.customer_id !== null && String(params.customer_id) !== "") {
+    query.set("customer_id", String(params.customer_id));
+  }
+  return apiRequest<CarApi[]>(`/cars${query.toString() ? `?${query.toString()}` : ""}`, {
     method: "GET",
     token,
   });
@@ -330,8 +340,10 @@ export function deleteCarRequest(token: string, carId: string | number) {
   });
 }
 
-export function listStaffRequest(token: string) {
-  return apiRequest<StaffApi[]>("/staff", {
+export function listStaffRequest(token: string, params?: { search?: string }) {
+  const query = new URLSearchParams();
+  if (params?.search?.trim()) query.set("search", params.search.trim());
+  return apiRequest<StaffApi[]>(`/staff${query.toString() ? `?${query.toString()}` : ""}`, {
     method: "GET",
     token,
   });
@@ -364,8 +376,10 @@ export function deleteStaffRequest(token: string, staffId: string | number) {
   });
 }
 
-export function listStockCategoriesRequest(token: string) {
-  return apiRequest<StockCategoryApi[]>("/stock-categories", {
+export function listStockCategoriesRequest(token: string, params?: { search?: string }) {
+  const query = new URLSearchParams();
+  if (params?.search?.trim()) query.set("search", params.search.trim());
+  return apiRequest<StockCategoryApi[]>(`/stock-categories${query.toString() ? `?${query.toString()}` : ""}`, {
     method: "GET",
     token,
   });
@@ -394,8 +408,14 @@ export function deleteStockCategoryRequest(token: string, categoryId: string | n
   });
 }
 
-export function listStocksRequest(token: string) {
-  return apiRequest<StockApi[]>("/stocks", {
+export function listStocksRequest(token: string, params?: { search?: string; status?: StockApi["status"] | ""; stock_category_id?: string | number }) {
+  const query = new URLSearchParams();
+  if (params?.search?.trim()) query.set("search", params.search.trim());
+  if (params?.status) query.set("status", params.status);
+  if (params?.stock_category_id !== undefined && params?.stock_category_id !== null && String(params.stock_category_id) !== "") {
+    query.set("stock_category_id", String(params.stock_category_id));
+  }
+  return apiRequest<StockApi[]>(`/stocks${query.toString() ? `?${query.toString()}` : ""}`, {
     method: "GET",
     token,
   });
@@ -443,8 +463,23 @@ export function deleteStockRequest(token: string, stockId: string | number) {
   });
 }
 
-export function listServicesRequest(token: string) {
-  return apiRequest<ServiceApi[]>("/services", {
+export function listServicesRequest(
+  token: string,
+  params?: {
+    search?: string;
+    status?: ServiceStatus | "";
+    customer_id?: string | number;
+    car_id?: string | number;
+    leading_staff_id?: string | number;
+  },
+) {
+  const query = new URLSearchParams();
+  if (params?.search?.trim()) query.set("search", params.search.trim());
+  if (params?.status) query.set("status", params.status);
+  if (params?.customer_id !== undefined && params?.customer_id !== null && String(params.customer_id) !== "") query.set("customer_id", String(params.customer_id));
+  if (params?.car_id !== undefined && params?.car_id !== null && String(params.car_id) !== "") query.set("car_id", String(params.car_id));
+  if (params?.leading_staff_id !== undefined && params?.leading_staff_id !== null && String(params.leading_staff_id) !== "") query.set("leading_staff_id", String(params.leading_staff_id));
+  return apiRequest<ServiceApi[]>(`/services${query.toString() ? `?${query.toString()}` : ""}`, {
     method: "GET",
     token,
   });
@@ -506,8 +541,21 @@ export function deleteServiceRequest(token: string, serviceId: string | number) 
   });
 }
 
-export function listInvoicesRequest(token: string) {
-  return apiRequest<InvoiceApi[]>("/invoices", {
+export function listInvoicesRequest(
+  token: string,
+  params?: {
+    search?: string;
+    payment_status?: InvoiceApi["payment_status"] | "";
+    customer_id?: string | number;
+    car_id?: string | number;
+  },
+) {
+  const query = new URLSearchParams();
+  if (params?.search?.trim()) query.set("search", params.search.trim());
+  if (params?.payment_status) query.set("payment_status", params.payment_status);
+  if (params?.customer_id !== undefined && params?.customer_id !== null && String(params.customer_id) !== "") query.set("customer_id", String(params.customer_id));
+  if (params?.car_id !== undefined && params?.car_id !== null && String(params.car_id) !== "") query.set("car_id", String(params.car_id));
+  return apiRequest<InvoiceApi[]>(`/invoices${query.toString() ? `?${query.toString()}` : ""}`, {
     method: "GET",
     token,
   });
@@ -556,8 +604,11 @@ export function deleteInvoiceRequest(token: string, invoiceId: string | number) 
   });
 }
 
-export function listExpensesRequest(token: string) {
-  return apiRequest<ExpenseApi[]>("/expenses", {
+export function listExpensesRequest(token: string, params?: { search?: string; category?: ExpenseApi["category"] | "" }) {
+  const query = new URLSearchParams();
+  if (params?.search?.trim()) query.set("search", params.search.trim());
+  if (params?.category) query.set("category", params.category);
+  return apiRequest<ExpenseApi[]>(`/expenses${query.toString() ? `?${query.toString()}` : ""}`, {
     method: "GET",
     token,
   });

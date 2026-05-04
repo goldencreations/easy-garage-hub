@@ -48,10 +48,7 @@ export default function Stock() {
   const [categoryName, setCategoryName] = useState("");
   const [editingCategory, setEditingCategory] = useState<StockCategoryApi | null>(null);
 
-  const filtered = list.filter((s) => {
-    const q = query.toLowerCase();
-    return s.name.toLowerCase().includes(q) || (s.category?.name ?? "").toLowerCase().includes(q);
-  });
+  const filtered = list;
 
   const lowCount = list.filter((s) => s.status !== "available").length;
   const totalValue = list.reduce((sum, s) => sum + s.price * s.quantity, 0);
@@ -66,7 +63,7 @@ export default function Stock() {
 
       try {
         const [stocksRes, categoriesRes] = await Promise.all([
-          listStocksRequest(token),
+          listStocksRequest(token, { search: query }),
           listStockCategoriesRequest(token),
         ]);
         setList(stocksRes.data);
@@ -79,7 +76,7 @@ export default function Stock() {
     };
 
     void loadData();
-  }, [token]);
+  }, [token, query]);
 
   const openAdd = () => { setEditing(null); setCategory(""); setOpen(true); };
   const openEdit = (item: StockApi) => { setEditing(item); setCategory(String(item.stock_category_id)); setOpen(true); };

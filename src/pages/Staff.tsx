@@ -41,7 +41,7 @@ export default function Staff() {
       }
 
       try {
-        const response = await listStaffRequest(token);
+        const response = await listStaffRequest(token, { search: query });
         setList(response.data);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Could not load staff.");
@@ -51,12 +51,9 @@ export default function Staff() {
     };
 
     void loadStaff();
-  }, [token]);
+  }, [token, query]);
 
-  const filtered = list.filter((staff) => {
-    const q = query.toLowerCase();
-    return staff.name.toLowerCase().includes(q) || staff.phone.toLowerCase().includes(q) || staff.skills.toLowerCase().includes(q);
-  });
+  const filtered = list;
 
   const openAdd = () => {
     setEditing(null);

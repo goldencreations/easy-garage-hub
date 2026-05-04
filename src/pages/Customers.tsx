@@ -49,15 +49,7 @@ export default function Customers() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  const filtered = list.filter((c) => {
-    const q = query.toLowerCase();
-    return (
-      c.name.toLowerCase().includes(q) ||
-      c.phone.toLowerCase().includes(q) ||
-      (c.email ?? "").toLowerCase().includes(q) ||
-      (c.address ?? "").toLowerCase().includes(q)
-    );
-  });
+  const filtered = list;
 
   useEffect(() => {
     const loadData = async () => {
@@ -68,7 +60,7 @@ export default function Customers() {
 
       try {
         const [customersResponse, carsResponse] = await Promise.all([
-          listCustomersRequest(token),
+          listCustomersRequest(token, { search: query }),
           listCarsRequest(token),
         ]);
         setList(customersResponse.data);
@@ -81,7 +73,7 @@ export default function Customers() {
     };
 
     void loadData();
-  }, [token]);
+  }, [token, query]);
 
   const openAdd = () => {
     setEditing(null);

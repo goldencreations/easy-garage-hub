@@ -39,17 +39,13 @@ export default function Cars() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CarApi | null>(null);
   const [customerId, setCustomerId] = useState<string>("");
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerSelectOpen, setCustomerSelectOpen] = useState(false);
+  const [customerOptions, setCustomerOptions] = useState<CustomerApi[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  const filtered = list.filter((c) => {
-    const q = query.toLowerCase();
-    return (
-      c.plate_number.toLowerCase().includes(q) ||
-      c.vehicle_type.toLowerCase().includes(q) ||
-      c.model_year.toLowerCase().includes(q)
-    );
-  });
+  const filtered = list;
 
   useEffect(() => {
     const loadData = async () => {
@@ -60,11 +56,12 @@ export default function Cars() {
 
       try {
         const [carsResponse, customersResponse] = await Promise.all([
-          listCarsRequest(token),
+          listCarsRequest(token, { search: query }),
           listCustomersRequest(token),
         ]);
         setList(carsResponse.data);
         setCustomers(customersResponse.data);
+        setCustomerOptions(customersResponse.data);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Could not load cars.");
       } finally {
@@ -73,7 +70,21 @@ export default function Cars() {
     };
 
     void loadData();
-  }, [token]);
+  }, [token, query]);
+
+  useEffect(() => {
+    const loadCustomerOptions = async () => {
+      if (!token || !customerSelectOpen) return;
+      try {
+        const response = await listCustomersRequest(token, { search: customerSearch });
+        setCustomerOptions(response.data);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not search customers.");
+      }
+    };
+
+    void loadCustomerOptions();
+  }, [token, customerSelectOpen, customerSearch]);
 
   const openAdd = () => {
     setEditing(null);
@@ -160,10 +171,23 @@ export default function Cars() {
               <form className="space-y-4" onSubmit={handleSave}>
                 <div className="space-y-2">
                   <Label>Customer (Owner) *</Label>
-                  <Select value={customerId} onValueChange={setCustomerId}>
+                  <Select
+                    value={customerId}
+                    onValueChange={setCustomerId}
+                    open={customerSelectOpen}
+                    onOpenChange={setCustomerSelectOpen}
+                  >
                     <SelectTrigger><SelectValue placeholder="Select customer who owns this car" /></SelectTrigger>
                     <SelectContent>
-                      {customers.map((c) => (
+                      <div className="p-2">
+                        <Input
+                          value={customerSearch}
+                          onChange={(e) => setCustomerSearch(e.target.value)}
+                          onKeyDown={(e) => e.stopPropagation()}
+                          placeholder="Search customer by name/phone"
+                        />
+                      </div>
+                      {customerOptions.map((c) => (
                         <SelectItem key={c.id} value={String(c.id)}>{c.name} — {c.phone}</SelectItem>
                       ))}
                     </SelectContent>

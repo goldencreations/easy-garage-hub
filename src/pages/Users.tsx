@@ -60,10 +60,7 @@ export default function Users() {
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const filtered = list.filter((u) =>
-    u.name.toLowerCase().includes(query.toLowerCase()) ||
-    u.email.toLowerCase().includes(query.toLowerCase())
-  );
+  const filtered = list;
 
   useEffect(() => {
     const loadUsers = async () => {
@@ -73,7 +70,7 @@ export default function Users() {
       }
 
       try {
-        const response = await listAdminsRequest(token);
+        const response = await listAdminsRequest(token, { search: query });
         setList(response.data.map(toUiUser));
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Could not load users.");
@@ -83,7 +80,7 @@ export default function Users() {
     };
 
     void loadUsers();
-  }, [token]);
+  }, [token, query]);
 
   const openAdd = () => { setEditing(null); setRole("Admin"); setActive(true); setOpen(true); };
   const openEdit = (u: UiUser) => { setEditing(u); setRole(u.role); setActive(u.active); setOpen(true); };

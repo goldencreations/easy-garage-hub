@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Download, Eye, Loader2, Plus, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataCard } from "@/components/DataCard";
@@ -45,6 +45,15 @@ export default function Invoices() {
   const [cars, setCars] = useState<CarApi[]>([]);
   const [services, setServices] = useState<ServiceApi[]>([]);
   const [query, setQuery] = useState("");
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [carSearch, setCarSearch] = useState("");
+  const [serviceSearch, setServiceSearch] = useState("");
+  const [customerSelectOpen, setCustomerSelectOpen] = useState(false);
+  const [carSelectOpen, setCarSelectOpen] = useState(false);
+  const [serviceSelectOpen, setServiceSelectOpen] = useState(false);
+  const [customerOptions, setCustomerOptions] = useState<CustomerApi[]>([]);
+  const [carOptions, setCarOptions] = useState<CarApi[]>([]);
+  const [serviceOptions, setServiceOptions] = useState<ServiceApi[]>([]);
   const [viewId, setViewId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -65,7 +74,7 @@ export default function Invoices() {
 
       try {
         const [invoicesRes, customersRes, carsRes, servicesRes] = await Promise.all([
-          listInvoicesRequest(token),
+          listInvoicesRequest(token, { search: query }),
           listCustomersRequest(token),
           listCarsRequest(token),
           listServicesRequest(token),
@@ -74,6 +83,9 @@ export default function Invoices() {
         setCustomers(customersRes.data);
         setCars(carsRes.data);
         setServices(servicesRes.data);
+        setCustomerOptions(customersRes.data);
+        setCarOptions(carsRes.data);
+        setServiceOptions(servicesRes.data);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Could not load invoices.");
       } finally {
@@ -82,23 +94,52 @@ export default function Invoices() {
     };
 
     void loadData();
-  }, [token]);
+  }, [token, query]);
 
-  const customerCars = cars.filter((c) => String(c.customer_id) === customerId);
-  const filteredServices = services.filter(
-    (service) => String(service.customer_id) === customerId && String(service.car_id) === carId,
-  );
+  useEffect(() => {
+    const loadCustomerOptions = async () => {
+      if (!token || !customerSelectOpen) return;
+      try {
+        const response = await listCustomersRequest(token, { search: customerSearch });
+        setCustomerOptions(response.data);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not search customers.");
+      }
+    };
+    void loadCustomerOptions();
+  }, [token, customerSelectOpen, customerSearch]);
 
-  const filtered = list.filter((invoice) => {
-    const customer = customers.find((c) => String(c.id) === String(invoice.customer_id));
-    const car = cars.find((c) => String(c.id) === String(invoice.car_id));
-    const q = query.toLowerCase();
-    return (
-      invoice.invoice_number.toLowerCase().includes(q) ||
-      (customer?.name ?? "").toLowerCase().includes(q) ||
-      (car?.plate_number ?? "").toLowerCase().includes(q)
-    );
-  });
+  useEffect(() => {
+    const loadCarOptions = async () => {
+      if (!token || !carSelectOpen || !customerId) return;
+      try {
+        const response = await listCarsRequest(token, { search: carSearch, customer_id: customerId });
+        setCarOptions(response.data);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not search cars.");
+      }
+    };
+    void loadCarOptions();
+  }, [token, carSelectOpen, carSearch, customerId]);
+
+  useEffect(() => {
+    const loadServiceOptions = async () => {
+      if (!token || !serviceSelectOpen || !customerId || !carId) return;
+      try {
+        const response = await listServicesRequest(token, {
+          search: serviceSearch,
+          customer_id: customerId,
+          car_id: carId,
+        });
+        setServiceOptions(response.data);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not search services.");
+      }
+    };
+    void loadServiceOptions();
+  }, [token, serviceSelectOpen, serviceSearch, customerId, carId]);
+
+  const filtered = list;
 
   const viewing = viewId ? list.find((invoice) => String(invoice.id) === viewId) : null;
   const viewCustomer = viewing ? customers.find((c) => String(c.id) === String(viewing.customer_id)) : null;
@@ -357,28 +398,69 @@ export default function Invoices() {
                 <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-2">
                     <Label>Customer *</Label>
-                    <Select value={customerId} onValueChange={(v) => { setCustomerId(v); setCarId(""); setServiceId(""); }}>
+                    <Select
+                      value={customerId}
+                      onValueChange={(v) => { setCustomerId(v); setCarId(""); setServiceId(""); }}
+                      open={customerSelectOpen}
+                      onOpenChange={setCustomerSelectOpen}
+                    >
                       <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
                       <SelectContent>
-                        {customers.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+                        <div className="p-2">
+                          <Input
+                            value={customerSearch}
+                            onChange={(e) => setCustomerSearch(e.target.value)}
+                            onKeyDown={(e) => e.stopPropagation()}
+                            placeholder="Search customer"
+                          />
+                        </div>
+                        {customerOptions.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Car *</Label>
-                    <Select value={carId} onValueChange={(v) => { setCarId(v); setServiceId(""); }} disabled={!customerId}>
+                    <Select
+                      value={carId}
+                      onValueChange={(v) => { setCarId(v); setServiceId(""); }}
+                      disabled={!customerId}
+                      open={carSelectOpen}
+                      onOpenChange={setCarSelectOpen}
+                    >
                       <SelectTrigger><SelectValue placeholder={customerId ? "Select car" : "Select customer first"} /></SelectTrigger>
                       <SelectContent>
-                        {customerCars.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.plate_number}</SelectItem>)}
+                        <div className="p-2">
+                          <Input
+                            value={carSearch}
+                            onChange={(e) => setCarSearch(e.target.value)}
+                            onKeyDown={(e) => e.stopPropagation()}
+                            placeholder="Search car plate"
+                          />
+                        </div>
+                        {carOptions.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.plate_number}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Service (optional)</Label>
-                    <Select value={serviceId} onValueChange={setServiceId} disabled={!carId}>
+                    <Select
+                      value={serviceId}
+                      onValueChange={setServiceId}
+                      disabled={!carId}
+                      open={serviceSelectOpen}
+                      onOpenChange={setServiceSelectOpen}
+                    >
                       <SelectTrigger><SelectValue placeholder="Select service" /></SelectTrigger>
                       <SelectContent>
-                        {filteredServices.map((service) => (
+                        <div className="p-2">
+                          <Input
+                            value={serviceSearch}
+                            onChange={(e) => setServiceSearch(e.target.value)}
+                            onKeyDown={(e) => e.stopPropagation()}
+                            placeholder="Search service"
+                          />
+                        </div>
+                        {serviceOptions.map((service) => (
                           <SelectItem key={service.id} value={String(service.id)}>
                             {formatDate(service.date)} - {service.problem}
                           </SelectItem>
