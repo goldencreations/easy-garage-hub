@@ -12,11 +12,13 @@ import CustomerDetail from "./pages/CustomerDetail";
 import Cars from "./pages/Cars";
 import CarDetail from "./pages/CarDetail";
 import Services from "./pages/Services";
+import Staff from "./pages/Staff";
 import Invoices from "./pages/Invoices";
 import Expenses from "./pages/Expenses";
 import Stock from "./pages/Stock";
 import Users from "./pages/Users";
 import Login from "./pages/Login";
+import ForgotPassword from "./pages/ForgotPassword";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -30,6 +32,7 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route element={<ProtectedLayout />}>
               <Route element={<AppLayout />}>
                 <Route path="/" element={<Dashboard />} />
@@ -38,6 +41,7 @@ const App = () => (
                 <Route path="/cars" element={<Cars />} />
                 <Route path="/cars/:id" element={<CarDetail />} />
                 <Route path="/services" element={<Services />} />
+                <Route path="/staff" element={<Staff />} />
                 <Route path="/invoices" element={<Invoices />} />
                 <Route path="/expenses" element={<Expenses />} />
                 <Route path="/stock" element={<Stock />} />

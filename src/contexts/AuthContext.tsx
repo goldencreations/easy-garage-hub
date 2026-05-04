@@ -7,31 +7,37 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { users, type User } from "@/lib/mock-data";
+import { type AuthPayload, type AuthUser, loginRequest, logoutRequest } from "@/lib/api";
 
 const STORAGE_KEY = "easy-garage-auth";
+type StoredAuth = AuthPayload;
 
 type AuthContextValue = {
-  user: User | null;
+  user: AuthUser | null;
+  token: string | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
-  logout: () => void;
+  logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw) as { userId?: string };
-        const u = users.find((x) => x.id === parsed.userId && x.active);
-        if (u) setUser(u);
-        else localStorage.removeItem(STORAGE_KEY);
+        const parsed = JSON.parse(raw) as StoredAuth;
+        if (parsed?.token && parsed?.user) {
+          setToken(parsed.token);
+          setUser(parsed.user);
+        } else {
+          localStorage.removeItem(STORAGE_KEY);
+        }
       }
     } catch {
       localStorage.removeItem(STORAGE_KEY);
@@ -44,21 +50,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const e = email.trim().toLowerCase();
     if (!e) return { ok: false, error: "Enter your email." };
     if (!password.trim()) return { ok: false, error: "Enter your password." };
-    const u = users.find((x) => x.email.toLowerCase() === e && x.active);
-    if (!u) return { ok: false, error: "No active account found for that email." };
-    setUser(u);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ userId: u.id }));
-    return { ok: true };
+
+    try {
+      const response = await loginRequest(e, password);
+      setToken(response.data.token);
+      setUser(response.data.user);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(response.data));
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : "Could not sign in.",
+      };
+    }
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    if (token) {
+      try {
+        await logoutRequest(token);
+      } catch {
+        // Continue client-side logout even if server token invalid/expired.
+      }
+    }
     setUser(null);
+    setToken(null);
     localStorage.removeItem(STORAGE_KEY);
-  }, []);
+  }, [token]);
 
   const value = useMemo(
-    () => ({ user, isLoading, login, logout }),
-    [user, isLoading, login, logout],
+    () => ({ user, token, isLoading, login, logout }),
+    [user, token, isLoading, login, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

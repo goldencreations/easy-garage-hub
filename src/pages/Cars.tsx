@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Eye, Pencil, Trash2 } from "lucide-react";
+import { Loader2, Plus, Eye, Pencil, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataCard } from "@/components/DataCard";
 import { SearchBar } from "@/components/SearchBar";
@@ -18,41 +18,129 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { cars as initialCars, customers, type Car } from "@/lib/mock-data";
+import {
+  createCarRequest,
+  deleteCarRequest,
+  listCarsRequest,
+  listCustomersRequest,
+  updateCarRequest,
+  type CarApi,
+  type CustomerApi,
+} from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 export default function Cars() {
   const navigate = useNavigate();
-  const [list, setList] = useState<Car[]>(initialCars);
+  const { token } = useAuth();
+  const [list, setList] = useState<CarApi[]>([]);
+  const [customers, setCustomers] = useState<CustomerApi[]>([]);
   const [query, setQuery] = useState("");
-  const [addOpen, setAddOpen] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<CarApi | null>(null);
   const [customerId, setCustomerId] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   const filtered = list.filter((c) => {
     const q = query.toLowerCase();
-    return c.plate.toLowerCase().includes(q) || c.make.toLowerCase().includes(q) || c.model.toLowerCase().includes(q);
+    return (
+      c.plate_number.toLowerCase().includes(q) ||
+      c.vehicle_type.toLowerCase().includes(q) ||
+      c.model_year.toLowerCase().includes(q)
+    );
   });
 
-  const handleAdd = (e: React.FormEvent<HTMLFormElement>) => {
+  useEffect(() => {
+    const loadData = async () => {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const [carsResponse, customersResponse] = await Promise.all([
+          listCarsRequest(token),
+          listCustomersRequest(token),
+        ]);
+        setList(carsResponse.data);
+        setCustomers(customersResponse.data);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not load cars.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadData();
+  }, [token]);
+
+  const openAdd = () => {
+    setEditing(null);
+    setCustomerId("");
+    setOpen(true);
+  };
+
+  const openEdit = (car: CarApi) => {
+    setEditing(car);
+    setCustomerId(String(car.customer_id));
+    setOpen(true);
+  };
+
+  const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!token) {
+      toast.error("Your session is missing. Please sign in again.");
+      return;
+    }
+
     if (!customerId) {
       toast.error("Please select the customer who owns this car");
       return;
     }
     const f = new FormData(e.currentTarget);
-    const newCar: Car = {
-      id: `v${Date.now()}`,
-      plate: String(f.get("plate")),
-      make: String(f.get("make")),
-      model: String(f.get("model")),
-      year: Number(f.get("year")),
+    const payload = {
+      customer_id: customerId,
+      plate_number: String(f.get("plate_number")),
+      vehicle_type: String(f.get("vehicle_type")),
+      model_year: String(f.get("model_year")),
       color: String(f.get("color")),
-      customerId,
     };
-    setList([newCar, ...list]);
-    setAddOpen(false);
-    setCustomerId("");
-    toast.success("Car added");
+
+    setSubmitting(true);
+    try {
+      if (editing) {
+        const response = await updateCarRequest(token, editing.id, payload);
+        setList((prev) => prev.map((car) => (String(car.id) === String(editing.id) ? response.data : car)));
+        toast.success("Car updated");
+      } else {
+        const response = await createCarRequest(token, payload);
+        setList((prev) => [response.data, ...prev]);
+        toast.success("Car added");
+      }
+      setOpen(false);
+      setEditing(null);
+      setCustomerId("");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save car.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (carId: string | number) => {
+    if (!token) {
+      toast.error("Your session is missing. Please sign in again.");
+      return;
+    }
+
+    try {
+      await deleteCarRequest(token, carId);
+      setList((prev) => prev.filter((car) => String(car.id) !== String(carId)));
+      toast.success("Car removed");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not remove car.");
+    }
   };
 
   return (
@@ -61,39 +149,40 @@ export default function Cars() {
         title="Cars"
         description="Search any plate number to instantly see full service history."
         actions={
-          <Dialog open={addOpen} onOpenChange={setAddOpen}>
+          <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button size="lg" className="bg-gradient-primary text-primary-foreground shadow-md">
+              <Button size="lg" className="bg-gradient-primary text-primary-foreground shadow-md" onClick={openAdd}>
                 <Plus className="mr-2 h-5 w-5" /> Add Car
               </Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>Add New Car</DialogTitle></DialogHeader>
-              <form className="space-y-4" onSubmit={handleAdd}>
+              <DialogHeader><DialogTitle>{editing ? "Edit Car" : "Add New Car"}</DialogTitle></DialogHeader>
+              <form className="space-y-4" onSubmit={handleSave}>
                 <div className="space-y-2">
                   <Label>Customer (Owner) *</Label>
                   <Select value={customerId} onValueChange={setCustomerId}>
                     <SelectTrigger><SelectValue placeholder="Select customer who owns this car" /></SelectTrigger>
                     <SelectContent>
                       {customers.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>{c.name} — {c.phone}</SelectItem>
+                        <SelectItem key={c.id} value={String(c.id)}>{c.name} — {c.phone}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">A customer can own more than one car.</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2"><Label>Plate Number *</Label><Input name="plate" required placeholder="T 123 ABC" /></div>
-                  <div className="space-y-2"><Label>Year</Label><Input name="year" type="number" placeholder="2020" /></div>
+                  <div className="space-y-2"><Label>Plate Number *</Label><Input name="plate_number" required defaultValue={editing?.plate_number} placeholder="T 123 ABC" /></div>
+                  <div className="space-y-2"><Label>Year *</Label><Input name="model_year" required placeholder="2020" defaultValue={editing?.model_year} /></div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2"><Label>Make</Label><Input name="make" placeholder="Toyota" /></div>
-                  <div className="space-y-2"><Label>Model</Label><Input name="model" placeholder="Corolla" /></div>
+                  <div className="space-y-2"><Label>Vehicle Type *</Label><Input name="vehicle_type" required placeholder="Toyota Corolla" defaultValue={editing?.vehicle_type} /></div>
+                  <div className="space-y-2"><Label>Color *</Label><Input name="color" required placeholder="White" defaultValue={editing?.color} /></div>
                 </div>
-                <div className="space-y-2"><Label>Color</Label><Input name="color" placeholder="White" /></div>
                 <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-                  <Button type="submit" className="bg-gradient-primary">Save Car</Button>
+                  <Button type="button" variant="outline" disabled={submitting} onClick={() => setOpen(false)}>Cancel</Button>
+                  <Button type="submit" className="bg-gradient-primary" disabled={submitting}>
+                    {submitting ? "Saving..." : editing ? "Update Car" : "Save Car"}
+                  </Button>
                 </DialogFooter>
               </form>
             </DialogContent>
@@ -122,15 +211,22 @@ export default function Cars() {
               </TableRow>
             </TableHeader>
             <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                    <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading cars...</span>
+                  </TableCell>
+                </TableRow>
+              )}
               {filtered.map((c) => {
-                const owner = customers.find((x) => x.id === c.customerId);
+                const owner = customers.find((x) => String(x.id) === String(c.customer_id));
                 return (
                   <TableRow key={c.id} className="cursor-pointer hover:bg-muted/40" onClick={() => navigate(`/cars/${c.id}`)}>
                     <TableCell>
-                      <span className="rounded-md bg-primary/10 px-2 py-1 font-mono font-bold text-primary">{c.plate}</span>
+                      <span className="rounded-md bg-primary/10 px-2 py-1 font-mono font-bold text-primary">{c.plate_number}</span>
                     </TableCell>
-                    <TableCell className="font-medium">{c.make} {c.model}</TableCell>
-                    <TableCell className="hidden md:table-cell">{c.year}</TableCell>
+                    <TableCell className="font-medium">{c.vehicle_type}</TableCell>
+                    <TableCell className="hidden md:table-cell">{c.model_year}</TableCell>
                     <TableCell className="hidden md:table-cell">{c.color}</TableCell>
                     <TableCell>{owner?.name ?? "—"}</TableCell>
                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
@@ -138,10 +234,10 @@ export default function Cars() {
                         <Button size="icon" variant="ghost" onClick={() => navigate(`/cars/${c.id}`)}>
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button size="icon" variant="ghost" onClick={() => toast("Edit form")}>
+                        <Button size="icon" variant="ghost" onClick={() => openEdit(c)}>
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button size="icon" variant="ghost" onClick={() => { setList(list.filter(x => x.id !== c.id)); toast.success("Car removed"); }}>
+                        <Button size="icon" variant="ghost" onClick={() => void handleDelete(c.id)}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -149,7 +245,7 @@ export default function Cars() {
                   </TableRow>
                 );
               })}
-              {filtered.length === 0 && (
+              {!loading && filtered.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
                     No cars found. {customers.length === 0 && <Badge variant="secondary">Add a customer first</Badge>}

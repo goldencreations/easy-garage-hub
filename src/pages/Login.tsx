@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { users } from "@/lib/mock-data";
 import { toast } from "sonner";
 
 export default function Login() {
@@ -46,8 +45,6 @@ export default function Login() {
       setSubmitting(false);
     }
   };
-
-  const demoEmails = users.filter((u) => u.active).map((u) => u.email);
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-background to-muted/40 p-4">
@@ -97,14 +94,15 @@ export default function Login() {
               {submitting ? "Signing in…" : "Sign in"}
             </Button>
           </form>
-          <p className="mt-4 rounded-md bg-muted/60 p-3 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">Demo:</span> any password works for active users. Try{" "}
-            <span className="font-mono text-[11px]">{demoEmails[0]}</span>
-            {demoEmails.length > 1 && (
-              <> or <span className="font-mono text-[11px]">{demoEmails[1]}</span></>
-            )}
-            .
-          </p>
+          <Button
+            type="button"
+            variant="link"
+            className="mt-2 h-auto px-0 text-sm"
+            onClick={() => navigate("/forgot-password")}
+            disabled={submitting}
+          >
+            Forgot password?
+          </Button>
         </CardContent>
       </Card>
 

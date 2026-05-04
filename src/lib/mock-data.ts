@@ -128,4 +128,8 @@ export const users: User[] = [
   { id: "u4", name: "Grace Mollel", email: "grace@garage.co.tz", role: "Staff", active: false },
 ];
 
-export const formatCurrency = (n: number) => `TSH ${n.toLocaleString()}`;
+export const formatCurrency = (n: number | string) => {
+  const value = typeof n === "string" ? Number(n.replace(/,/g, "").trim()) : n;
+  const safe = Number.isFinite(value) ? value : 0;
+  return `TSH ${safe.toLocaleString()}`;
+};

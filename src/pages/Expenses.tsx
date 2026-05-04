@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Plus, Receipt, TrendingDown, Calendar } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Calendar, Loader2, Pencil, Plus, Receipt, Trash2, TrendingDown } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataCard } from "@/components/DataCard";
 import { SearchBar } from "@/components/SearchBar";
@@ -19,39 +19,149 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { expenses as initialExpenses, formatCurrency, type Expense } from "@/lib/mock-data";
+import {
+  createExpenseRequest,
+  deleteExpenseRequest,
+  listExpensesRequest,
+  updateExpenseRequest,
+  type ExpenseApi,
+} from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { formatCurrency } from "@/lib/mock-data";
+import { formatDate } from "@/lib/date";
 import { toast } from "sonner";
 
-const CATEGORIES = ["Rent", "Utilities", "Supplies", "Tools", "Salary", "Transport", "Other"];
+const CATEGORIES: Array<{ value: "stock_purchase" | "salary" | "operation" | "other"; label: string }> = [
+  { value: "stock_purchase", label: "Stock Purchase" },
+  { value: "salary", label: "Salary" },
+  { value: "operation", label: "Operation" },
+  { value: "other", label: "Other" },
+];
 
 export default function Expenses() {
-  const [list, setList] = useState<Expense[]>(initialExpenses);
+  const { token } = useAuth();
+  const [list, setList] = useState<ExpenseApi[]>([]);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
-  const [category, setCategory] = useState("");
+  const [editing, setEditing] = useState<ExpenseApi | null>(null);
+  const [category, setCategory] = useState<ExpenseApi["category"] | "">("");
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
-  const filtered = list.filter((e) => {
-    const q = query.toLowerCase();
-    return e.name.toLowerCase().includes(q) || e.category.toLowerCase().includes(q);
-  });
-  const total = list.reduce((s, e) => s + e.amount, 0);
+  useEffect(() => {
+    const loadExpenses = async () => {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
 
-  const handleAdd = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!category) { toast.error("Select a category"); return; }
-    const f = new FormData(e.currentTarget);
-    const newExp: Expense = {
-      id: `e${Date.now()}`,
-      name: String(f.get("name")),
-      category,
-      amount: Number(f.get("amount")),
-      date: String(f.get("date")) || new Date().toISOString().slice(0, 10),
-      description: String(f.get("description")),
-      recordedBy: "Admin",
+      try {
+        const response = await listExpensesRequest(token);
+        setList(
+          response.data.map((expense) => ({
+            ...expense,
+            amount: Number(expense.amount) || 0,
+          })),
+        );
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not load expenses.");
+      } finally {
+        setLoading(false);
+      }
     };
-    setList([newExp, ...list]);
-    setOpen(false); setCategory("");
-    toast.success("Expense recorded");
+
+    void loadExpenses();
+  }, [token]);
+
+  const filtered = useMemo(() => {
+    const q = query.toLowerCase();
+    return list.filter((expense) => expense.title.toLowerCase().includes(q) || expense.category.toLowerCase().includes(q));
+  }, [list, query]);
+
+  const total = list.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
+  const now = new Date();
+  const currentMonthTotal = list
+    .filter((expense) => {
+      const date = new Date(expense.date);
+      return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+    })
+    .reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
+
+  const openAdd = () => {
+    setEditing(null);
+    setCategory("");
+    setOpen(true);
+  };
+
+  const openEdit = (expense: ExpenseApi) => {
+    setEditing(expense);
+    setCategory(expense.category);
+    setOpen(true);
+  };
+
+  const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!token) return;
+    if (!category) {
+      toast.error("Select a category");
+      return;
+    }
+
+    const form = new FormData(e.currentTarget);
+    const amountRaw = String(form.get("amount") ?? "").replace(/,/g, "").trim();
+    const amount = Number(amountRaw);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("Enter a valid amount.");
+      return;
+    }
+
+    const payload = {
+      title: String(form.get("title")),
+      category,
+      amount,
+      date: String(form.get("date")) || new Date().toISOString().slice(0, 10),
+      description: String(form.get("description") ?? ""),
+    };
+
+    setSubmitting(true);
+    try {
+      if (editing) {
+        const response = await updateExpenseRequest(token, editing.id, payload);
+        setList((prev) =>
+          prev.map((item) =>
+            String(item.id) === String(editing.id)
+              ? {
+                  ...response.data,
+                  amount: Number(response.data.amount) || 0,
+                }
+              : item,
+          ),
+        );
+        toast.success("Expense updated");
+      } else {
+        const response = await createExpenseRequest(token, payload);
+        setList((prev) => [{ ...response.data, amount: Number(response.data.amount) || 0 }, ...prev]);
+        toast.success("Expense recorded");
+      }
+      setOpen(false);
+      setEditing(null);
+      setCategory("");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save expense.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (expenseId: string | number) => {
+    if (!token) return;
+    try {
+      await deleteExpenseRequest(token, expenseId);
+      setList((prev) => prev.filter((item) => String(item.id) !== String(expenseId)));
+      toast.success("Expense deleted");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not delete expense.");
+    }
   };
 
   return (
@@ -62,29 +172,45 @@ export default function Expenses() {
         actions={
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button size="lg" className="bg-gradient-primary text-primary-foreground shadow-md">
+              <Button size="lg" className="bg-gradient-primary text-primary-foreground shadow-md" onClick={openAdd}>
                 <Plus className="mr-2 h-5 w-5" /> Add Expense
               </Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>Record New Expense</DialogTitle></DialogHeader>
-              <form className="space-y-4" onSubmit={handleAdd}>
-                <div className="space-y-2"><Label>Expense Name *</Label><Input name="name" required placeholder="e.g. Workshop rent" /></div>
+              <DialogHeader><DialogTitle>{editing ? "Update Expense" : "Record New Expense"}</DialogTitle></DialogHeader>
+              <form className="space-y-4" onSubmit={handleSave}>
+                <div className="space-y-2"><Label>Expense Title *</Label><Input name="title" required defaultValue={editing?.title} placeholder="e.g. Workshop rent" /></div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Category *</Label>
-                    <Select value={category} onValueChange={setCategory}>
+                    <Select value={category} onValueChange={(value) => setCategory(value as ExpenseApi["category"])}>
                       <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                      <SelectContent>{CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                      <SelectContent>
+                        {CATEGORIES.map((cat) => <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>)}
+                      </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2"><Label>Amount (TSH) *</Label><Input name="amount" required type="number" placeholder="0" /></div>
+                  <div className="space-y-2">
+                    <Label>Amount (TSH) *</Label>
+                    <Input
+                      name="amount"
+                      required
+                      type="number"
+                      min="1"
+                      step="1"
+                      inputMode="numeric"
+                      defaultValue={editing?.amount}
+                      placeholder="30000"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2"><Label>Date</Label><Input name="date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} /></div>
-                <div className="space-y-2"><Label>Description</Label><Textarea name="description" placeholder="Optional notes" /></div>
+                <div className="space-y-2"><Label>Date</Label><Input name="date" type="date" defaultValue={editing?.date ?? new Date().toISOString().slice(0, 10)} /></div>
+                <div className="space-y-2"><Label>Description</Label><Textarea name="description" defaultValue={editing?.description ?? ""} placeholder="Optional notes" /></div>
                 <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-                  <Button type="submit" className="bg-gradient-primary">Save Expense</Button>
+                  <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={submitting}>Cancel</Button>
+                  <Button type="submit" className="bg-gradient-primary" disabled={submitting}>
+                    {submitting ? "Saving..." : editing ? "Update Expense" : "Save Expense"}
+                  </Button>
                 </DialogFooter>
               </form>
             </DialogContent>
@@ -94,14 +220,14 @@ export default function Expenses() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <StatCard label="Total Expenses" value={formatCurrency(total)} icon={Receipt} tone="warning" />
-        <StatCard label="This Month" value={formatCurrency(total)} icon={Calendar} tone="primary" />
-        <StatCard label="Categories" value={new Set(list.map(e => e.category)).size} icon={TrendingDown} tone="accent" />
+        <StatCard label="This Month" value={formatCurrency(currentMonthTotal)} icon={Calendar} tone="primary" />
+        <StatCard label="Categories" value={new Set(list.map((e) => e.category)).size} icon={TrendingDown} tone="accent" />
       </div>
 
       <DataCard
         actions={
           <>
-            <SearchBar value={query} onChange={setQuery} placeholder="Search expenses…" />
+            <SearchBar value={query} onChange={setQuery} placeholder="Search expenses..." />
             <ExportActions entity="expenses" />
           </>
         }
@@ -114,21 +240,44 @@ export default function Expenses() {
                 <TableHead>Expense</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead className="hidden md:table-cell">Description</TableHead>
-                <TableHead>Recorded By</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((e) => (
-                <TableRow key={e.id}>
-                  <TableCell>{e.date}</TableCell>
-                  <TableCell className="font-semibold">{e.name}</TableCell>
-                  <TableCell><Badge variant="secondary">{e.category}</Badge></TableCell>
-                  <TableCell className="hidden md:table-cell text-muted-foreground">{e.description}</TableCell>
-                  <TableCell>{e.recordedBy}</TableCell>
-                  <TableCell className="text-right font-bold">{formatCurrency(e.amount)}</TableCell>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                    <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading expenses...</span>
+                  </TableCell>
+                </TableRow>
+              )}
+              {filtered.map((expense) => (
+                <TableRow key={expense.id}>
+                  <TableCell>{formatDate(expense.date)}</TableCell>
+                  <TableCell className="font-semibold">{expense.title}</TableCell>
+                  <TableCell><Badge variant="secondary">{CATEGORIES.find((cat) => cat.value === expense.category)?.label ?? expense.category}</Badge></TableCell>
+                  <TableCell className="hidden md:table-cell text-muted-foreground">{expense.description}</TableCell>
+                  <TableCell className="text-right font-bold">{formatCurrency(expense.amount)}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-1">
+                      <Button size="sm" variant="ghost" onClick={() => openEdit(expense)}>
+                        <Pencil className="mr-1 h-4 w-4" /> Edit
+                      </Button>
+                      <Button size="icon" variant="ghost" onClick={() => void handleDelete(expense.id)}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </TableCell>
                 </TableRow>
               ))}
+              {!loading && filtered.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                    No expenses found.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </div>

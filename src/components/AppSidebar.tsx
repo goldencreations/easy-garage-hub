@@ -8,6 +8,7 @@ import {
   Receipt,
   Package,
   UserCog,
+  UserRound,
   Settings2,
 } from "lucide-react";
 
@@ -29,6 +30,7 @@ const items = [
   { title: "Customers", url: "/customers", icon: Users },
   { title: "Cars", url: "/cars", icon: Car },
   { title: "Services", url: "/services", icon: Wrench },
+  { title: "Staff", url: "/staff", icon: UserRound },
   { title: "Invoices", url: "/invoices", icon: FileText },
   { title: "Expenses", url: "/expenses", icon: Receipt },
   { title: "Stock", url: "/stock", icon: Package },
