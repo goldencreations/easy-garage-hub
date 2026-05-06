@@ -98,8 +98,8 @@ export async function buildInvoicePdf(
   doc.setFillColor(214, 0, 0);
   doc.setTextColor(255, 255, 255);
   doc.rect(14, y, 182, 8, "F");
-  doc.text("#", 17, y + 5.5);
-  doc.text("Item", 28, y + 5.5);
+  doc.text("#", 20, y + 5.5);
+  doc.text("Item", 32, y + 5.5);
   doc.text("Qty", 132, y + 5.5, { align: "right" });
   doc.text("Price (TZS)", 162, y + 5.5, { align: "right" });
   doc.text("Total (TZS)", 193, y + 5.5, { align: "right" });
@@ -111,8 +111,8 @@ export async function buildInvoicePdf(
   for (const [index, it] of invoice.items.entries()) {
     const lines = doc.splitTextToSize(it.description, 96);
     const rowHeight = Math.max(6, lines.length * 5);
-    doc.text(String(index + 1), 17, y + 4);
-    doc.text(lines, 16, y + 4);
+    doc.text(String(index + 1), 20, y + 4);
+    doc.text(lines, 32, y + 4);
     doc.text(String(it.qty), 132, y + 4, { align: "right" });
     doc.text(formatTzs(it.price), 162, y + 4, { align: "right" });
     doc.text(formatTzs(it.qty * it.price), 193, y + 4, { align: "right" });

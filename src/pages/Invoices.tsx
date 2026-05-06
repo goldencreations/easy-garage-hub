@@ -301,6 +301,8 @@ export default function Invoices() {
             table { width: 100%; border-collapse: collapse; margin-top: 18px; }
             th, td { border: 1px solid #d1d5db; padding: 8px; font-size: 12px; }
             th { background: #d60000; color: #fff; text-align: left; }
+            th:first-child, td:first-child { width: 34px; text-align: center; }
+            th:nth-child(2), td:nth-child(2) { padding-left: 12px; }
             .bottom { display: grid; grid-template-columns: 1fr 320px; gap: 16px; margin-top: 18px; align-items: start; }
             .summary { border: 1px solid #111; padding: 10px; font-size: 12px; }
             .summary-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e5e7eb; }
@@ -444,8 +446,8 @@ export default function Invoices() {
     doc.setFillColor(214, 0, 0);
     doc.setTextColor(255, 255, 255);
     doc.rect(14, y, 182, 8, "F");
-    doc.text("#", 17, y + 5.5);
-    doc.text("Item", 28, y + 5.5);
+    doc.text("#", 20, y + 5.5);
+    doc.text("Item", 32, y + 5.5);
     doc.text("Qty", 132, y + 5.5, { align: "right" });
     doc.text("Price (TZS)", 162, y + 5.5, { align: "right" });
     doc.text("Total (TZS)", 193, y + 5.5, { align: "right" });
@@ -461,8 +463,8 @@ export default function Invoices() {
       }
       const descLines = doc.splitTextToSize(item.description, 96);
       const rowHeight = Math.max(6, descLines.length * 5);
-      doc.text(String(index + 1), 17, y + 4);
-      doc.text(descLines, 16, y + 4);
+      doc.text(String(index + 1), 20, y + 4);
+      doc.text(descLines, 32, y + 4);
       doc.text(String(item.quantity), 132, y + 4, { align: "right" });
       doc.text(formatTzs(item.unit_price), 162, y + 4, { align: "right" });
       doc.text(formatTzs(item.line_total), 193, y + 4, { align: "right" });

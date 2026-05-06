@@ -197,11 +197,92 @@ export default function CustomerDetail() {
 
   if (!customer) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         <Button variant="ghost" onClick={() => navigate(-1)}>
-          <ArrowLeft className="mr-2 h-4 w-4" /> Back
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Customers
         </Button>
-        <p className="text-muted-foreground">Customer not found.</p>
+
+        <PageHeader
+          title="Customer Detail"
+          description={`Customer ID: ${id ?? "unknown"} — API data pending`}
+        />
+
+        <DataCard title="Customer Profile (API Required)">
+          <div className="grid grid-cols-1 gap-3 p-5 text-sm md:grid-cols-2">
+            <p><span className="text-muted-foreground">Name:</span> <span className="font-semibold">[customer.name]</span></p>
+            <p><span className="text-muted-foreground">Phone:</span> <span className="font-semibold">[customer.phone]</span></p>
+            <p><span className="text-muted-foreground">Email:</span> <span className="font-semibold">[customer.email]</span></p>
+            <p><span className="text-muted-foreground">Address:</span> <span className="font-semibold">[customer.address]</span></p>
+          </div>
+        </DataCard>
+
+        <DataCard title="Cars Owned (API Required)">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Plate Number</TableHead>
+                  <TableHead>Vehicle Type</TableHead>
+                  <TableHead>Model Year</TableHead>
+                  <TableHead>Color</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow>
+                  <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                    Return customer cars list for this customer.
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+        </DataCard>
+
+        <DataCard title="Service History (API Required)">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Car</TableHead>
+                  <TableHead>Problem</TableHead>
+                  <TableHead>Fix</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow>
+                  <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                    Return services for all customer cars.
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+        </DataCard>
+
+        <DataCard title="Invoices (API Required)">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Invoice #</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Car</TableHead>
+                  <TableHead>Total</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow>
+                  <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                    Return customer invoices with items for PDF/print.
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+        </DataCard>
       </div>
     );
   }
