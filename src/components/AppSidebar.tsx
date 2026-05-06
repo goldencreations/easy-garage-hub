@@ -49,9 +49,12 @@ export function AppSidebar() {
         <div className="flex items-center gap-3">
           <img src="/aziziumemelogo.png" alt="AZIZI AUTOMOTIVE GARAGE logo" className="h-10 w-10 shrink-0 rounded-lg bg-white object-contain p-1 shadow-glow" />
           {!collapsed && (
-            <div className="min-w-0">
-              <p className="truncate text-base font-bold text-sidebar-foreground">
-                AZIZI AUTOMOTIVE GARAGE
+            <div className="min-w-0 leading-tight">
+              <p className="text-sm font-bold text-sidebar-foreground">
+                AZIZI AUTOMOTIVE
+              </p>
+              <p className="text-sm font-bold text-sidebar-foreground">
+                GARAGE
               </p>
             </div>
           )}
