@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { DataCard } from "@/components/DataCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/contexts/AuthContext";
 import { buildInvoicePdf, downloadInvoicePdf } from "@/lib/invoice-pdf";
@@ -43,6 +44,10 @@ export default function CarDetail() {
   const [payload, setPayload] = useState<Awaited<ReturnType<typeof carDetailsRequest>>["data"] | null>(null);
   const [previewInvoiceId, setPreviewInvoiceId] = useState<string | null>(null);
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
+  const [serviceSearch, setServiceSearch] = useState("");
+  const [serviceDate, setServiceDate] = useState("");
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [invoiceDate, setInvoiceDate] = useState("");
 
   useEffect(() => {
     const load = async () => {
@@ -77,6 +82,36 @@ export default function CarDetail() {
     const unpaid = invoices.filter((i) => i.payment_status !== "paid").reduce((sum, i) => sum + toNumber(i.total), 0);
     return { paid, unpaid };
   }, [invoices]);
+
+  const filteredServices = useMemo(() => {
+    const q = serviceSearch.trim().toLowerCase();
+    return services.filter((service) => {
+      if (serviceDate) {
+        const d = String(service.date).slice(0, 10);
+        if (d !== serviceDate) return false;
+      }
+      if (!q) return true;
+      const blob = [
+        service.problem,
+        service.fix ?? "",
+        service.leading_staff?.name ?? "",
+        service.status,
+      ].join(" ").toLowerCase();
+      return blob.includes(q);
+    });
+  }, [services, serviceSearch, serviceDate]);
+
+  const filteredInvoices = useMemo(() => {
+    const q = invoiceNumber.trim().toLowerCase();
+    return invoices.filter((invoice) => {
+      if (invoiceDate) {
+        const d = String(invoice.date).slice(0, 10);
+        if (d !== invoiceDate) return false;
+      }
+      if (!q) return true;
+      return invoice.invoice_number.toLowerCase().includes(q);
+    });
+  }, [invoices, invoiceDate, invoiceNumber]);
 
   const createPdfBlob = useCallback(
     async (invoice: InvoiceApi, regeneratedAt?: Date) => {
@@ -169,6 +204,14 @@ export default function CarDetail() {
       </div>
 
       <DataCard title="Service History" actions={<Wrench className="h-4 w-4 text-muted-foreground" />}>
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Input
+            placeholder="Search service problem, fix, staff..."
+            value={serviceSearch}
+            onChange={(e) => setServiceSearch(e.target.value)}
+          />
+          <Input type="date" value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} />
+        </div>
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -181,8 +224,8 @@ export default function CarDetail() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {services.length === 0 && <TableRow><TableCell colSpan={5} className="py-8 text-center text-muted-foreground">No services yet.</TableCell></TableRow>}
-              {services.map((service) => (
+              {filteredServices.length === 0 && <TableRow><TableCell colSpan={5} className="py-8 text-center text-muted-foreground">No services match your filters.</TableCell></TableRow>}
+              {filteredServices.map((service) => (
                 <TableRow key={service.id}>
                   <TableCell>{formatDate(service.date)}</TableCell>
                   <TableCell>{service.problem}</TableCell>
@@ -197,6 +240,14 @@ export default function CarDetail() {
       </DataCard>
 
       <DataCard title="Invoices" actions={<FileText className="h-4 w-4 text-muted-foreground" />}>
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Input
+            placeholder="Search by invoice number..."
+            value={invoiceNumber}
+            onChange={(e) => setInvoiceNumber(e.target.value)}
+          />
+          <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
+        </div>
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -209,8 +260,8 @@ export default function CarDetail() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {invoices.length === 0 && <TableRow><TableCell colSpan={5} className="py-8 text-center text-muted-foreground">No invoices yet.</TableCell></TableRow>}
-              {invoices.map((invoice) => (
+              {filteredInvoices.length === 0 && <TableRow><TableCell colSpan={5} className="py-8 text-center text-muted-foreground">No invoices match your filters.</TableCell></TableRow>}
+              {filteredInvoices.map((invoice) => (
                 <TableRow key={invoice.id}>
                   <TableCell className="font-mono">{invoice.invoice_number}</TableCell>
                   <TableCell>{formatDate(invoice.date)}</TableCell>

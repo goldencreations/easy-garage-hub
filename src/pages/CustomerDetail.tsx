@@ -6,6 +6,7 @@ import { DataCard } from "@/components/DataCard";
 import { StatCard } from "@/components/StatCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/contexts/AuthContext";
 import { buildInvoicePdf, downloadInvoicePdf } from "@/lib/invoice-pdf";
@@ -44,6 +45,10 @@ export default function CustomerDetail() {
   const [payload, setPayload] = useState<Awaited<ReturnType<typeof customerDetailsRequest>>["data"] | null>(null);
   const [previewInvoiceId, setPreviewInvoiceId] = useState<string | null>(null);
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
+  const [serviceSearch, setServiceSearch] = useState("");
+  const [serviceDate, setServiceDate] = useState("");
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [invoiceDate, setInvoiceDate] = useState("");
 
   useEffect(() => {
     const load = async () => {
@@ -78,6 +83,32 @@ export default function CustomerDetail() {
     const unpaid = invoices.filter((i) => i.payment_status !== "paid").reduce((sum, i) => sum + toNumber(i.total), 0);
     return { paid, unpaid };
   }, [invoices]);
+
+  const filteredServices = useMemo(() => {
+    const q = serviceSearch.trim().toLowerCase();
+    return services.filter((service) => {
+      if (serviceDate) {
+        const d = String(service.date).slice(0, 10);
+        if (d !== serviceDate) return false;
+      }
+      if (!q) return true;
+      const carText = (service.car as CarApi | undefined)?.plate_number ?? "";
+      const blob = [service.problem, service.fix ?? "", service.status, carText].join(" ").toLowerCase();
+      return blob.includes(q);
+    });
+  }, [services, serviceSearch, serviceDate]);
+
+  const filteredInvoices = useMemo(() => {
+    const q = invoiceNumber.trim().toLowerCase();
+    return invoices.filter((invoice) => {
+      if (invoiceDate) {
+        const d = String(invoice.date).slice(0, 10);
+        if (d !== invoiceDate) return false;
+      }
+      if (!q) return true;
+      return invoice.invoice_number.toLowerCase().includes(q);
+    });
+  }, [invoices, invoiceDate, invoiceNumber]);
 
   const carById = useMemo(() => new Map(cars.map((car) => [String(car.id), car])), [cars]);
 
@@ -188,6 +219,14 @@ export default function CustomerDetail() {
       </DataCard>
 
       <DataCard title="Invoice History">
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Input
+            placeholder="Search by invoice number..."
+            value={invoiceNumber}
+            onChange={(e) => setInvoiceNumber(e.target.value)}
+          />
+          <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
+        </div>
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -201,8 +240,8 @@ export default function CustomerDetail() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {invoices.length === 0 && <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">No invoices yet.</TableCell></TableRow>}
-              {invoices.map((invoice) => (
+              {filteredInvoices.length === 0 && <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">No invoices match your filters.</TableCell></TableRow>}
+              {filteredInvoices.map((invoice) => (
                 <TableRow key={invoice.id}>
                   <TableCell className="font-mono">{invoice.invoice_number}</TableCell>
                   <TableCell>{formatDate(invoice.date)}</TableCell>
@@ -248,6 +287,42 @@ export default function CustomerDetail() {
             <iframe title={`Invoice ${previewInvoice.invoice_number}`} src={previewUrl} className="h-[min(85vh,720px)] w-full rounded-md border bg-background" />
           </div>
         )}
+      </DataCard>
+
+      <DataCard title="Service History">
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Input
+            placeholder="Search service problem, fix, car..."
+            value={serviceSearch}
+            onChange={(e) => setServiceSearch(e.target.value)}
+          />
+          <Input type="date" value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} />
+        </div>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Car</TableHead>
+                <TableHead>Problem</TableHead>
+                <TableHead>Fix</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredServices.length === 0 && <TableRow><TableCell colSpan={5} className="py-8 text-center text-muted-foreground">No services match your filters.</TableCell></TableRow>}
+              {filteredServices.map((service) => (
+                <TableRow key={service.id}>
+                  <TableCell>{formatDate(service.date)}</TableCell>
+                  <TableCell>{(service.car as CarApi | undefined)?.plate_number ?? carById.get(String(service.car_id))?.plate_number ?? "—"}</TableCell>
+                  <TableCell>{service.problem}</TableCell>
+                  <TableCell>{service.fix ?? "—"}</TableCell>
+                  <TableCell><Badge variant="outline">{service.status}</Badge></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </DataCard>
     </div>
   );
