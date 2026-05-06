@@ -69,10 +69,10 @@ export type StockCategoryApi = {
 export type StockApi = {
   id: number | string;
   name: string;
-  quantity: number;
+  quantity: number | string;
   status: "available" | "low" | "out_of_stock";
   stock_category_id: number | string;
-  price: number;
+  price: number | string;
   category?: StockCategoryApi;
 };
 
@@ -86,20 +86,20 @@ export type ServiceApi = {
   leading_staff_id: number | string;
   problem: string;
   fix?: string | null;
-  cost_total: number;
+  cost_total: number | string;
   status: ServiceStatus;
   customer?: CustomerApi;
   car?: CarApi;
   leading_staff?: StaffApi;
-  stocks?: Array<StockApi & { pivot?: { quantity: number } }>;
+  stocks?: Array<StockApi & { pivot?: { quantity: number | string } }>;
 };
 
 export type InvoiceItemApi = {
   id?: number | string;
   description: string;
-  quantity: number;
-  unit_price: number;
-  line_total: number;
+  quantity: number | string;
+  unit_price: number | string;
+  line_total: number | string;
   item_type?: "stock" | "labor" | "custom";
 };
 
@@ -111,11 +111,41 @@ export type InvoiceApi = {
   car_id: number | string;
   service_id?: number | string | null;
   payment_status: "unpaid" | "partial" | "paid";
-  total: number;
+  total: number | string;
   items: InvoiceItemApi[];
   customer?: CustomerApi;
   car?: CarApi;
   service?: ServiceApi;
+};
+
+export type CarDetailsApi = {
+  car: CarApi & {
+    customer?: CustomerApi;
+    services?: ServiceApi[];
+    invoices?: InvoiceApi[];
+  };
+  history?: {
+    services_count: number;
+    invoices_count: number;
+  };
+};
+
+export type CustomerDetailsApi = {
+  customer: CustomerApi & {
+    cars?: Array<
+      CarApi & {
+        services?: ServiceApi[];
+        invoices?: InvoiceApi[];
+      }
+    >;
+    services?: ServiceApi[];
+    invoices?: InvoiceApi[];
+  };
+  history?: {
+    cars_count: number;
+    services_count: number;
+    invoices_count: number;
+  };
 };
 
 export type ExpenseApi = {
@@ -336,6 +366,20 @@ export function updateCarRequest(
 export function deleteCarRequest(token: string, carId: string | number) {
   return apiRequest<[] | Record<string, never>>(`/cars/${carId}`, {
     method: "DELETE",
+    token,
+  });
+}
+
+export function carDetailsRequest(token: string, carId: string | number) {
+  return apiRequest<CarDetailsApi>(`/cars/${carId}/details`, {
+    method: "GET",
+    token,
+  });
+}
+
+export function customerDetailsRequest(token: string, customerId: string | number) {
+  return apiRequest<CustomerDetailsApi>(`/customers/${customerId}/details`, {
+    method: "GET",
     token,
   });
 }
