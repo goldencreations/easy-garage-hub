@@ -53,8 +53,7 @@ export default function Login() {
           <Settings2 className="h-6 w-6 text-accent-foreground" />
         </div>
         <div>
-          <p className="text-lg font-bold">AutoGarage</p>
-          <p className="text-xs text-muted-foreground">Management System</p>
+          <p className="text-lg font-bold">azizi umeme garage management system</p>
         </div>
       </div>
 

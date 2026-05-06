@@ -9,7 +9,7 @@ import {
 } from "react";
 import { type AuthPayload, type AuthUser, loginRequest, logoutRequest } from "@/lib/api";
 
-const STORAGE_KEY = "easy-garage-auth";
+const STORAGE_KEY = "azizi-umeme-garage-management-system-auth";
 type StoredAuth = AuthPayload;
 
 type AuthContextValue = {

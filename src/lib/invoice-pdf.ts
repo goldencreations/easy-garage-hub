@@ -16,7 +16,7 @@ export function buildInvoicePdf(
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
-  doc.text("Easy Garage", MARGIN, y);
+  doc.text("azizi umeme garage management system", MARGIN, y);
   y += 8;
 
   doc.setFontSize(11);

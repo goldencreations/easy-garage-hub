@@ -314,7 +314,7 @@ export default function Invoices() {
     doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(18);
-    doc.text("Easy Garage Invoice", 14, 17);
+    doc.text("azizi umeme garage management system Invoice", 14, 17);
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
     doc.text(`Invoice #${invoice.invoice_number}`, 14, 23);
@@ -375,7 +375,7 @@ export default function Invoices() {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(120, 120, 120);
-    doc.text("Thank you for choosing Easy Garage.", 14, y);
+    doc.text("Thank you for choosing azizi umeme garage management system.", 14, y);
 
     doc.save(`${invoice.invoice_number.replace(/[^\w.-]+/g, "_")}.pdf`);
   };

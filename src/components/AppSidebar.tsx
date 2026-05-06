@@ -54,10 +54,7 @@ export function AppSidebar() {
           {!collapsed && (
             <div className="min-w-0">
               <p className="truncate text-base font-bold text-sidebar-foreground">
-                AutoGarage
-              </p>
-              <p className="truncate text-xs text-sidebar-foreground/60">
-                Management System
+                azizi umeme garage management system
               </p>
             </div>
           )}
