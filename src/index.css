@@ -2,33 +2,30 @@
 @tailwind components;
 @tailwind utilities;
 
-/* azizi umeme garage management system — clean, professional workshop theme.
+/* AZIZI AUTOMOTIVE GARAGE theme.
    All colors MUST be HSL. */
 
 @layer base {
   :root {
-    --background: 210 40% 98%;
-    --foreground: 222 47% 11%;
+    --background: 0 0% 100%;
+    --foreground: 0 0% 8%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 0 0% 8%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-
-    /* Deep workshop blue */
-    --primary: 217 91% 35%;
+    --popover-foreground: 0 0% 8%;
+    --primary: 0 86% 45%;
     --primary-foreground: 0 0% 100%;
-    --primary-glow: 217 91% 55%;
+    --primary-glow: 0 86% 60%;
 
-    --secondary: 215 28% 95%;
-    --secondary-foreground: 222 47% 11%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 10%;
 
-    --muted: 215 25% 94%;
-    --muted-foreground: 215 16% 42%;
+    --muted: 0 0% 95%;
+    --muted-foreground: 0 0% 35%;
 
-    /* Warm garage orange accent */
-    --accent: 28 95% 54%;
+    --accent: 0 0% 10%;
     --accent-foreground: 0 0% 100%;
 
     --success: 142 71% 40%;
@@ -40,51 +37,51 @@
     --destructive: 0 75% 50%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 215 20% 88%;
-    --input: 215 20% 88%;
-    --ring: 217 91% 35%;
+    --border: 0 0% 85%;
+    --input: 0 0% 85%;
+    --ring: 0 86% 45%;
 
     --radius: 0.75rem;
 
-    --gradient-primary: linear-gradient(135deg, hsl(217 91% 35%), hsl(217 91% 50%));
-    --gradient-accent: linear-gradient(135deg, hsl(28 95% 54%), hsl(20 95% 58%));
-    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%), hsl(215 25% 98%));
+    --gradient-primary: linear-gradient(135deg, hsl(0 86% 45%), hsl(0 86% 52%));
+    --gradient-accent: linear-gradient(135deg, hsl(0 0% 8%), hsl(0 0% 20%));
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%), hsl(0 0% 98%));
 
-    --shadow-sm: 0 1px 2px 0 hsl(217 30% 20% / 0.05);
-    --shadow-md: 0 4px 12px -2px hsl(217 30% 20% / 0.08);
-    --shadow-lg: 0 10px 30px -10px hsl(217 30% 20% / 0.15);
-    --shadow-glow: 0 0 30px hsl(217 91% 55% / 0.25);
+    --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.08);
+    --shadow-md: 0 4px 12px -2px hsl(0 0% 0% / 0.12);
+    --shadow-lg: 0 10px 30px -10px hsl(0 0% 0% / 0.18);
+    --shadow-glow: 0 0 30px hsl(0 86% 52% / 0.2);
 
-    --sidebar-background: 222 47% 13%;
-    --sidebar-foreground: 215 20% 85%;
-    --sidebar-primary: 28 95% 54%;
+    --sidebar-background: 0 0% 8%;
+    --sidebar-foreground: 0 0% 92%;
+    --sidebar-primary: 0 86% 45%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 222 40% 20%;
+    --sidebar-accent: 0 0% 16%;
     --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 222 40% 20%;
-    --sidebar-ring: 28 95% 54%;
+    --sidebar-border: 0 0% 20%;
+    --sidebar-ring: 0 86% 45%;
   }
 
   .dark {
-    --background: 222 47% 8%;
+    --background: 0 0% 6%;
     --foreground: 210 40% 98%;
-    --card: 222 47% 11%;
+    --card: 0 0% 9%;
     --card-foreground: 210 40% 98%;
-    --popover: 222 47% 11%;
+    --popover: 0 0% 9%;
     --popover-foreground: 210 40% 98%;
-    --primary: 217 91% 60%;
-    --primary-foreground: 222 47% 11%;
-    --secondary: 217 33% 18%;
+    --primary: 0 86% 56%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 16%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 18%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 28 95% 54%;
+    --muted: 0 0% 16%;
+    --muted-foreground: 0 0% 72%;
+    --accent: 0 0% 18%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 63% 45%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217 33% 20%;
-    --input: 217 33% 20%;
-    --ring: 217 91% 60%;
+    --border: 0 0% 22%;
+    --input: 0 0% 22%;
+    --ring: 0 86% 56%;
   }
 }
 

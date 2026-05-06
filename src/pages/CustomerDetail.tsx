@@ -157,7 +157,7 @@ export default function CustomerDetail() {
     : null;
 
   const createPdfBlob = useCallback(
-    (inv: Invoice, regeneratedAt?: Date) => {
+    async (inv: Invoice, regeneratedAt?: Date) => {
       if (!customer) return new Blob([], { type: "application/pdf" });
       const car = cars.find((c) => c.id === inv.carId);
       return buildInvoicePdf(inv, customer, car, regeneratedAt ? { regeneratedAt } : undefined);
@@ -166,22 +166,24 @@ export default function CustomerDetail() {
   );
 
   const handlePreviewPdf = useCallback(
-    (inv: Invoice) => {
+    async (inv: Invoice) => {
       setPreviewInvoiceId(inv.id);
-      setPreviewBlob(createPdfBlob(inv));
+      const blob = await createPdfBlob(inv);
+      setPreviewBlob(blob);
     },
     [createPdfBlob],
   );
 
-  const handleRegeneratePdf = useCallback(() => {
+  const handleRegeneratePdf = useCallback(async () => {
     if (!previewInvoice || !customer) return;
-    setPreviewBlob(createPdfBlob(previewInvoice, new Date()));
+    const blob = await createPdfBlob(previewInvoice, new Date());
+    setPreviewBlob(blob);
     toast.success("Invoice PDF regenerated");
   }, [previewInvoice, customer, createPdfBlob]);
 
   const handleExportPdf = useCallback(
-    (inv: Invoice, blob?: Blob) => {
-      const b = blob ?? createPdfBlob(inv);
+    async (inv: Invoice, blob?: Blob) => {
+      const b = blob ?? (await createPdfBlob(inv));
       downloadInvoicePdf(b, inv.number);
       toast.success("PDF downloaded");
     },
@@ -338,10 +340,10 @@ export default function CustomerDetail() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex flex-wrap justify-end gap-1">
-                          <Button size="sm" variant="outline" onClick={() => handlePreviewPdf(i)}>
+                          <Button size="sm" variant="outline" onClick={() => void handlePreviewPdf(i)}>
                             <Eye className="mr-1 h-4 w-4" /> Preview PDF
                           </Button>
-                          <Button size="sm" variant="ghost" onClick={() => handleExportPdf(i)}>
+                          <Button size="sm" variant="ghost" onClick={() => void handleExportPdf(i)}>
                             <Download className="mr-1 h-4 w-4" /> PDF
                           </Button>
                         </div>
@@ -389,10 +391,10 @@ export default function CustomerDetail() {
               <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="font-semibold">PDF preview — {previewInvoice.number}</p>
                 <div className="flex flex-wrap gap-2">
-                  <Button type="button" size="sm" variant="outline" onClick={handleRegeneratePdf}>
+                  <Button type="button" size="sm" variant="outline" onClick={() => void handleRegeneratePdf()}>
                     <RefreshCw className="mr-1 h-4 w-4" /> Regenerate PDF
                   </Button>
-                  <Button type="button" size="sm" className="bg-gradient-primary text-primary-foreground" onClick={() => handleExportPdf(previewInvoice, previewBlob ?? undefined)}>
+                  <Button type="button" size="sm" className="bg-gradient-primary text-primary-foreground" onClick={() => void handleExportPdf(previewInvoice, previewBlob ?? undefined)}>
                     <Download className="mr-1 h-4 w-4" /> Export PDF
                   </Button>
                   <Button type="button" size="sm" variant="ghost" onClick={handleClosePreview}>

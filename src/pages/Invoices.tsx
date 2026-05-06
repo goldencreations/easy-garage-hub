@@ -37,9 +37,48 @@ import { formatDate } from "@/lib/date";
 import { toast } from "sonner";
 
 type ItemInput = { description: string; quantity: number; unit_price: number; item_type: "labor" | "custom" };
+const GARAGE_NAME = "AZIZI AUTOMOTIVE GARAGE";
+const GARAGE_PHONE = "+255677401259";
+const GARAGE_EMAIL = "aziziautomotivegarage1@gmail.com";
+const GARAGE_LOCATION = "Kijitonyama, Dar es Salaam, Tanzania";
+const GARAGE_TIN = "127-702-112";
+const PAYMENT_ACCOUNT = "A/C NO: 24710015587 - NMB";
+const PAYMENT_ACCOUNT_NAME = "A/C NAME: AZIZI AUTOMOTIVE GARAGE";
+
+let logoDataUrlPromise: Promise<string | null> | null = null;
+
+const formatTzs = (value: number) => new Intl.NumberFormat("en-US").format(Math.max(0, Number(value) || 0));
+const formatInvoiceDateLong = (value: string | Date) =>
+  new Date(value).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+
+const resolvePaidAmount = (status: InvoiceApi["payment_status"], total: number) => {
+  if (status === "paid") return total;
+  return 0;
+};
+
+const loadLogoDataUrl = async () => {
+  if (!logoDataUrlPromise) {
+    logoDataUrlPromise = fetch("/aziziumemelogo.png")
+      .then((response) => {
+        if (!response.ok) throw new Error("Failed to load logo");
+        return response.blob();
+      })
+      .then(
+        (blob) =>
+          new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(String(reader.result ?? ""));
+            reader.onerror = () => reject(new Error("Failed to read logo"));
+            reader.readAsDataURL(blob);
+          }),
+      )
+      .catch(() => null);
+  }
+  return logoDataUrlPromise;
+};
 
 export default function Invoices() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [list, setList] = useState<InvoiceApi[]>([]);
   const [customers, setCustomers] = useState<CustomerApi[]>([]);
   const [cars, setCars] = useState<CarApi[]>([]);
@@ -223,15 +262,18 @@ export default function Invoices() {
   const openPrintableInvoice = (invoice: InvoiceApi) => {
     const customer = customers.find((c) => String(c.id) === String(invoice.customer_id));
     const car = cars.find((c) => String(c.id) === String(invoice.car_id));
-    const service = services.find((s) => String(s.id) === String(invoice.service_id));
+    const amountPaid = resolvePaidAmount(invoice.payment_status, Number(invoice.total) || 0);
+    const balanceDue = Math.max(0, (Number(invoice.total) || 0) - amountPaid);
+    const printedAt = new Date();
     const rows = invoice.items
       .map(
-        (item) => `
+        (item, index) => `
           <tr>
+            <td>${index + 1}</td>
             <td>${item.description}</td>
             <td style="text-align:right;">${item.quantity}</td>
-            <td style="text-align:right;">${formatCurrency(item.unit_price)}</td>
-            <td style="text-align:right;">${formatCurrency(item.line_total)}</td>
+            <td style="text-align:right;">${formatTzs(item.unit_price)}</td>
+            <td style="text-align:right;">${formatTzs(item.line_total)}</td>
           </tr>`,
       )
       .join("");
@@ -248,52 +290,89 @@ export default function Invoices() {
         <head>
           <title>Invoice ${invoice.invoice_number}</title>
           <style>
-            body { font-family: Arial, sans-serif; margin: 24px; color: #111; }
-            h1 { margin: 0 0 8px 0; }
-            .muted { color: #666; font-size: 12px; }
-            .section { margin-top: 16px; }
-            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-            th, td { border: 1px solid #ddd; padding: 8px; font-size: 13px; }
-            th { background: #f3f4f6; text-align: left; }
-            .totals { margin-top: 12px; text-align: right; font-weight: bold; font-size: 16px; }
+            body { font-family: Arial, sans-serif; margin: 20px; color: #111; }
+            .top { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+            .logo { width: 200px; height: auto; margin-bottom: 12px; }
+            .invoice-title { margin: 0; color: #d60000; font-size: 32px; font-weight: 800; text-align: right; }
+            .muted { color: #555; font-size: 12px; margin: 3px 0; }
+            .label { font-weight: 700; font-size: 13px; margin-top: 8px; }
+            .block { margin-top: 12px; }
+            .from, .to { font-size: 13px; line-height: 1.55; }
+            table { width: 100%; border-collapse: collapse; margin-top: 18px; }
+            th, td { border: 1px solid #d1d5db; padding: 8px; font-size: 12px; }
+            th { background: #d60000; color: #fff; text-align: left; }
+            .bottom { display: grid; grid-template-columns: 1fr 320px; gap: 16px; margin-top: 18px; align-items: start; }
+            .summary { border: 1px solid #111; padding: 10px; font-size: 12px; }
+            .summary-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e5e7eb; }
+            .summary-row:last-child { border-bottom: 0; font-weight: 700; }
+            .terms { font-size: 12px; line-height: 1.5; }
+            .terms ul { margin: 6px 0 0 16px; padding: 0; }
           </style>
         </head>
         <body>
-          <h1>Invoice ${invoice.invoice_number}</h1>
-          <p class="muted">Date: ${formatDate(invoice.date)} | Payment: ${invoice.payment_status.toUpperCase()}</p>
-          <div class="grid section">
+          <div class="top">
             <div>
-              <strong>Customer</strong>
-              <div>${customer?.name ?? "—"}</div>
-              <div class="muted">${customer?.phone ?? "—"}</div>
-              <div class="muted">${customer?.email ?? "—"}</div>
-              <div class="muted">${customer?.address ?? "—"}</div>
+              <img class="logo" src="/aziziumemelogo.png" alt="AZIZI AUTOMOTIVE GARAGE logo" />
+              <div class="label">INVOICE TO:</div>
+              <div class="to">
+                <div>${customer?.name ?? "—"}</div>
+                <div>Car Reg: ${car?.plate_number ?? "—"}</div>
+                <div>Car Name: ${car?.vehicle_type ?? "—"} (${car?.color ?? "—"})</div>
+                <div>${customer?.phone ?? "—"}</div>
+                <div>DAR ES SALAAM</div>
+              </div>
             </div>
             <div>
-              <strong>Car</strong>
-              <div>${car?.plate_number ?? "—"}</div>
-              <div class="muted">${car?.vehicle_type ?? "—"} | ${car?.model_year ?? "—"} | ${car?.color ?? "—"}</div>
-              <strong style="display:block; margin-top:8px;">Service</strong>
-              <div>${service ? `${formatDate(service.date)} - ${service.problem}` : "No linked service"}</div>
-              <div class="muted">${service?.fix ?? ""}</div>
+              <h1 class="invoice-title">INVOICE</h1>
+              <p class="muted"><strong>Invoice REF:</strong> ${invoice.invoice_number}</p>
+              <p class="muted"><strong>Date:</strong> ${formatInvoiceDateLong(invoice.date)}</p>
+              <div class="block">
+                <div class="label">INVOICE FROM:</div>
+                <div class="from">
+                  <div>${GARAGE_NAME}</div>
+                  <div>${GARAGE_PHONE}</div>
+                  <div>${GARAGE_EMAIL}</div>
+                  <div>${GARAGE_LOCATION}</div>
+                  <div>TIN: ${GARAGE_TIN}</div>
+                  <div class="muted">Printed: ${formatInvoiceDateLong(printedAt)}, ${printedAt.toLocaleTimeString()} by ${user?.name ?? "System User"}</div>
+                </div>
+              </div>
             </div>
           </div>
-          <div class="section">
-            <strong>Items</strong>
-            <table>
-              <thead>
-                <tr>
-                  <th>Description</th>
-                  <th style="text-align:right;">Qty</th>
-                  <th style="text-align:right;">Unit Price</th>
-                  <th style="text-align:right;">Line Total</th>
-                </tr>
-              </thead>
-              <tbody>${rows}</tbody>
-            </table>
+
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Item</th>
+                <th style="text-align:right;">Qty</th>
+                <th style="text-align:right;">Price (TZS)</th>
+                <th style="text-align:right;">Total (TZS)</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+
+          <div class="bottom">
+            <div class="terms">
+              <strong>PAYMENT DETAILS:</strong>
+              <div>${PAYMENT_ACCOUNT}</div>
+              <div>${PAYMENT_ACCOUNT_NAME}</div>
+              <div style="margin-top:8px;"><strong>TERMS & CONDITIONS</strong></div>
+              <ul>
+                <li>Extra repairs not listed in the quote will be charged separately.</li>
+                <li>Please collect removed parts within 7 days of repair.</li>
+                <li>80% of the payment is due upfront, with the remaining balance payable upon completion of the service.</li>
+                <li>Storage fees may apply for pickups made after 7 days.</li>
+              </ul>
+            </div>
+            <div class="summary">
+              <div class="summary-row"><span>Subtotal</span><span>${formatTzs(invoice.total)}</span></div>
+              <div class="summary-row"><span>Total Amount</span><span>${formatTzs(invoice.total)} TZS</span></div>
+              <div class="summary-row"><span>Amount Paid</span><span>${formatTzs(amountPaid)}</span></div>
+              <div class="summary-row"><span>Balance Due</span><span>${formatTzs(balanceDue)}</span></div>
+            </div>
           </div>
-          <div class="totals">Total: ${formatCurrency(invoice.total)}</div>
         </body>
       </html>
     `);
@@ -302,80 +381,130 @@ export default function Invoices() {
     printWindow.print();
   };
 
-  const downloadInvoicePdf = (invoice: InvoiceApi) => {
+  const downloadInvoicePdf = async (invoice: InvoiceApi) => {
     const customer = customers.find((c) => String(c.id) === String(invoice.customer_id));
     const car = cars.find((c) => String(c.id) === String(invoice.car_id));
-    const service = services.find((s) => String(s.id) === String(invoice.service_id));
+    const amountPaid = resolvePaidAmount(invoice.payment_status, Number(invoice.total) || 0);
+    const balanceDue = Math.max(0, (Number(invoice.total) || 0) - amountPaid);
+    const printedAt = new Date();
+    const logoDataUrl = await loadLogoDataUrl();
 
     const doc = new jsPDF({ unit: "mm", format: "a4" });
-    let y = 14;
-    doc.setFillColor(22, 163, 74);
-    doc.rect(0, 0, 210, 28, "F");
-    doc.setTextColor(255, 255, 255);
+    let y = 12;
+
+    if (logoDataUrl) {
+      try {
+        doc.addImage(logoDataUrl, "PNG", 14, y, 48, 18);
+      } catch {
+        // keep generating the invoice even if logo rendering fails
+      }
+    }
+
+    doc.setTextColor(214, 0, 0);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.text("azizi umeme garage management system Invoice", 14, 17);
-    doc.setFontSize(10);
+    doc.setFontSize(26);
+    doc.text("INVOICE", 196, y + 8, { align: "right" });
+
+    doc.setTextColor(0, 0, 0);
     doc.setFont("helvetica", "normal");
-    doc.text(`Invoice #${invoice.invoice_number}`, 14, 23);
-    doc.text(`Date: ${formatDate(invoice.date)}`, 145, 23);
+    doc.setFontSize(10);
+    doc.text(`Invoice REF: ${invoice.invoice_number}`, 196, y + 14, { align: "right" });
+    doc.text(`Date: ${formatInvoiceDateLong(invoice.date)}`, 196, y + 20, { align: "right" });
 
     y = 36;
-    doc.setTextColor(0, 0, 0);
-    doc.setDrawColor(220, 220, 220);
-    doc.roundedRect(14, y, 88, 36, 2, 2);
-    doc.roundedRect(108, y, 88, 36, 2, 2);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.text("Customer", 18, y + 7);
-    doc.text("Vehicle / Service", 112, y + 7);
-    doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
-    doc.text(customer?.name ?? "—", 18, y + 13);
-    doc.text(customer?.phone ?? "—", 18, y + 19);
-    doc.text(customer?.email ?? "—", 18, y + 25);
-    doc.text(car?.plate_number ?? "—", 112, y + 13);
-    doc.text(`${car?.vehicle_type ?? "—"} | ${car?.model_year ?? "—"} | ${car?.color ?? "—"}`, 112, y + 19);
-    doc.text(service ? `${formatDate(service.date)} - ${service.problem}` : "No linked service", 112, y + 25);
+    doc.text("INVOICE TO:", 14, y);
+    doc.text("INVOICE FROM:", 108, y);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    const leftLines = [
+      customer?.name ?? "—",
+      `Car Reg: ${car?.plate_number ?? "—"}`,
+      `Car Name: ${car?.vehicle_type ?? "—"} (${car?.color ?? "—"})`,
+      customer?.phone ?? "—",
+      "DAR ES SALAAM",
+    ];
+    leftLines.forEach((line, idx) => doc.text(line, 14, y + 6 + idx * 5));
+
+    const rightLines = [
+      GARAGE_NAME,
+      GARAGE_PHONE,
+      GARAGE_EMAIL,
+      GARAGE_LOCATION,
+      `TIN: ${GARAGE_TIN}`,
+      `Printed: ${formatInvoiceDateLong(printedAt)}, ${printedAt.toLocaleTimeString()}`,
+      `By: ${user?.name ?? "System User"}`,
+    ];
+    rightLines.forEach((line, idx) => doc.text(line, 108, y + 6 + idx * 5));
+
     y += 44;
 
     doc.setFont("helvetica", "bold");
-    doc.setFillColor(245, 245, 245);
+    doc.setFillColor(214, 0, 0);
+    doc.setTextColor(255, 255, 255);
     doc.rect(14, y, 182, 8, "F");
-    doc.text("Description", 16, y + 5.5);
-    doc.text("Qty", 122, y + 5.5, { align: "right" });
-    doc.text("Unit Price", 156, y + 5.5, { align: "right" });
-    doc.text("Line Total", 192, y + 5.5, { align: "right" });
+    doc.text("#", 17, y + 5.5);
+    doc.text("Item", 28, y + 5.5);
+    doc.text("Qty", 132, y + 5.5, { align: "right" });
+    doc.text("Price (TZS)", 162, y + 5.5, { align: "right" });
+    doc.text("Total (TZS)", 193, y + 5.5, { align: "right" });
     y += 10;
     doc.setFont("helvetica", "normal");
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(9);
 
-    for (const item of invoice.items) {
+    for (const [index, item] of invoice.items.entries()) {
       if (y > 270) {
         doc.addPage();
         y = 20;
       }
       const descLines = doc.splitTextToSize(item.description, 96);
       const rowHeight = Math.max(6, descLines.length * 5);
+      doc.text(String(index + 1), 17, y + 4);
       doc.text(descLines, 16, y + 4);
-      doc.text(String(item.quantity), 122, y + 4, { align: "right" });
-      doc.text(formatCurrency(item.unit_price), 156, y + 4, { align: "right" });
-      doc.text(formatCurrency(item.line_total), 192, y + 4, { align: "right" });
+      doc.text(String(item.quantity), 132, y + 4, { align: "right" });
+      doc.text(formatTzs(item.unit_price), 162, y + 4, { align: "right" });
+      doc.text(formatTzs(item.line_total), 193, y + 4, { align: "right" });
       y += rowHeight;
       doc.setDrawColor(235, 235, 235);
       doc.line(14, y, 196, y);
       y += 2;
     }
 
-    y += 4;
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.text(`Payment: ${invoice.payment_status.toUpperCase()}`, 14, y);
-    doc.text(`Total: ${formatCurrency(invoice.total)}`, 192, y, { align: "right" });
-    y += 10;
+    y += 2;
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(120, 120, 120);
-    doc.text("Thank you for choosing azizi umeme garage management system.", 14, y);
+    doc.setFontSize(8.6);
+    doc.text("PAYMENT DETAILS:", 14, y + 4);
+    doc.text(PAYMENT_ACCOUNT, 14, y + 9);
+    doc.text(PAYMENT_ACCOUNT_NAME, 14, y + 14);
+    doc.text("TERMS & CONDITIONS", 14, y + 20);
+    const terms = [
+      "Extra repairs not listed in the quote will be charged separately.",
+      "Please collect removed parts within 7 days of repair.",
+      "80% of the payment is due upfront, remaining on completion.",
+      "Storage fees may apply for pickups made after 7 days.",
+    ];
+    terms.forEach((term, idx) => doc.text(`- ${term}`, 14, y + 25 + idx * 4.6));
+
+    const boxX = 130;
+    const boxY = y + 2;
+    const boxW = 66;
+    const rowH = 7;
+    doc.setDrawColor(0, 0, 0);
+    doc.rect(boxX, boxY, boxW, rowH * 4 + 2);
+    const summaryRows = [
+      ["Subtotal", formatTzs(invoice.total)],
+      ["Total Amount", `${formatTzs(invoice.total)} TZS`],
+      ["Amount Paid", formatTzs(amountPaid)],
+      ["Balance Due", formatTzs(balanceDue)],
+    ] as const;
+    summaryRows.forEach(([label, value], idx) => {
+      const lineY = boxY + 6 + idx * rowH;
+      if (idx > 0) doc.line(boxX, boxY + 2 + idx * rowH, boxX + boxW, boxY + 2 + idx * rowH);
+      doc.text(label, boxX + 2, lineY);
+      doc.text(value, boxX + boxW - 2, lineY, { align: "right" });
+    });
 
     doc.save(`${invoice.invoice_number.replace(/[^\w.-]+/g, "_")}.pdf`);
   };

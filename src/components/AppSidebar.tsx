@@ -9,7 +9,6 @@ import {
   Package,
   UserCog,
   UserRound,
-  Settings2,
 } from "lucide-react";
 
 import {
@@ -48,13 +47,11 @@ export function AppSidebar() {
     <Sidebar collapsible="icon" className="border-r-0">
       <SidebarHeader className="border-b border-sidebar-border px-4 py-5">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-accent shadow-glow">
-            <Settings2 className="h-5 w-5 text-accent-foreground" />
-          </div>
+          <img src="/aziziumemelogo.png" alt="AZIZI AUTOMOTIVE GARAGE logo" className="h-10 w-10 shrink-0 rounded-lg bg-white object-contain p-1 shadow-glow" />
           {!collapsed && (
             <div className="min-w-0">
               <p className="truncate text-base font-bold text-sidebar-foreground">
-                azizi umeme garage management system
+                AZIZI AUTOMOTIVE GARAGE
               </p>
             </div>
           )}

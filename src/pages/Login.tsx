@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
-import { LogIn, Settings2 } from "lucide-react";
+import { LogIn } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,11 +49,9 @@ export default function Login() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-background to-muted/40 p-4">
       <div className="mb-8 flex items-center gap-3">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-accent shadow-glow">
-          <Settings2 className="h-6 w-6 text-accent-foreground" />
-        </div>
+        <img src="/aziziumemelogo.png" alt="AZIZI AUTOMOTIVE GARAGE logo" className="h-12 w-12 rounded-xl bg-white object-contain p-1 shadow-glow" />
         <div>
-          <p className="text-lg font-bold">azizi umeme garage management system</p>
+          <p className="text-lg font-bold">AZIZI AUTOMOTIVE GARAGE</p>
         </div>
       </div>
 
