@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Download, Eye, Loader2, Plus, Trash2 } from "lucide-react";
+import { Download, Eye, Loader2, Plus, Trash2, MoreHorizontal } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataCard } from "@/components/DataCard";
 import { SearchBar } from "@/components/SearchBar";
@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { jsPDF } from "jspdf";
 import {
   createInvoiceRequest,
@@ -526,7 +527,7 @@ export default function Invoices() {
             <DialogContent className="max-w-4xl">
               <DialogHeader><DialogTitle>Create New Invoice</DialogTitle></DialogHeader>
               <form className="space-y-4" onSubmit={handleSave}>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                   <div className="space-y-2">
                     <Label>Customer *</Label>
                     <Select
@@ -605,15 +606,15 @@ export default function Invoices() {
                   <Label>Custom/Labor Items (optional)</Label>
                   <div className="space-y-2">
                     {items.map((it, idx) => (
-                      <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                      <div key={idx} className="grid grid-cols-1 gap-2 sm:grid-cols-12 sm:items-center">
                         <Input
-                          className="col-span-6"
+                          className="sm:col-span-6"
                           placeholder="Description"
                           value={it.description}
                           onChange={(e) => updateItem(idx, { description: e.target.value })}
                         />
                         <Input
-                          className="col-span-2"
+                          className="sm:col-span-2"
                           type="number"
                           min={1}
                           placeholder="Qty"
@@ -621,7 +622,7 @@ export default function Invoices() {
                           onChange={(e) => updateItem(idx, { quantity: Number(e.target.value) || 1 })}
                         />
                         <Input
-                          className="col-span-2"
+                          className="sm:col-span-2"
                           type="number"
                           min={0}
                           placeholder="Unit Price"
@@ -629,13 +630,13 @@ export default function Invoices() {
                           onChange={(e) => updateItem(idx, { unit_price: Number(e.target.value) || 0 })}
                         />
                         <Select value={it.item_type} onValueChange={(v) => updateItem(idx, { item_type: v as "labor" | "custom" })}>
-                          <SelectTrigger className="col-span-1"><SelectValue /></SelectTrigger>
+                          <SelectTrigger className="sm:col-span-1"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="custom">Custom</SelectItem>
                             <SelectItem value="labor">Labor</SelectItem>
                           </SelectContent>
                         </Select>
-                        <Button type="button" variant="ghost" size="icon" className="col-span-1" onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}>
+                        <Button type="button" variant="ghost" size="icon" className="sm:col-span-1" onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -684,10 +685,10 @@ export default function Invoices() {
               <TableRow>
                 <TableHead>Invoice #</TableHead>
                 <TableHead>Date</TableHead>
-                <TableHead>Customer</TableHead>
+                <TableHead className="hidden md:table-cell">Customer</TableHead>
                 <TableHead>Car</TableHead>
                 <TableHead>Total</TableHead>
-                <TableHead>Payment</TableHead>
+                <TableHead className="hidden sm:table-cell">Payment</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -706,12 +707,12 @@ export default function Invoices() {
                   <TableRow key={invoice.id}>
                     <TableCell className="font-mono font-semibold">{invoice.invoice_number}</TableCell>
                     <TableCell>{formatDate(invoice.date)}</TableCell>
-                    <TableCell>{customer?.name}</TableCell>
+                    <TableCell className="hidden md:table-cell">{customer?.name}</TableCell>
                     <TableCell>
                       <span className="rounded bg-primary/10 px-2 py-1 font-mono text-xs font-bold text-primary">{car?.plate_number}</span>
                     </TableCell>
                     <TableCell className="font-bold">{formatCurrency(invoice.total)}</TableCell>
-                    <TableCell>
+                    <TableCell className="hidden sm:table-cell">
                       <Select value={invoice.payment_status} onValueChange={(v) => void handlePaymentStatus(invoice.id, v as "unpaid" | "partial" | "paid")}>
                         <SelectTrigger className="h-8 min-w-28"><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -722,17 +723,33 @@ export default function Invoices() {
                       </Select>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Badge className={paymentBadge(invoice.payment_status)}>{invoice.payment_status}</Badge>
+                      <div className="hidden flex-wrap justify-end gap-1 sm:flex">
+                        <Badge className={`hidden md:inline-flex ${paymentBadge(invoice.payment_status)}`}>{invoice.payment_status}</Badge>
                         <Button size="sm" variant="ghost" onClick={() => setViewId(String(invoice.id))}>
-                          <Eye className="mr-1 h-4 w-4" /> View
+                          <Eye className="h-4 w-4 sm:mr-1" />
+                          <span className="hidden sm:inline">View</span>
                         </Button>
                         <Button size="sm" variant="ghost" onClick={() => downloadInvoicePdf(invoice)}>
-                          <Download className="mr-1 h-4 w-4" /> PDF
+                          <Download className="h-4 w-4 sm:mr-1" />
+                          <span className="hidden sm:inline">PDF</span>
                         </Button>
                         <Button size="icon" variant="ghost" onClick={() => void handleDelete(invoice.id)}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
+                      </div>
+                      <div className="flex justify-end sm:hidden">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="icon" variant="ghost" aria-label="Open actions">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setViewId(String(invoice.id))}>View</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => downloadInvoicePdf(invoice)}>PDF</DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void handleDelete(invoice.id)}>Delete</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -755,7 +772,7 @@ export default function Invoices() {
           <DialogHeader><DialogTitle>Invoice {viewing?.invoice_number}</DialogTitle></DialogHeader>
           {viewing && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3 rounded-lg bg-muted/40 p-4 text-sm">
+              <div className="grid grid-cols-1 gap-3 rounded-lg bg-muted/40 p-4 text-sm sm:grid-cols-2">
                 <div>
                   <p className="text-muted-foreground">Bill To</p>
                   <p className="font-semibold">{viewCustomer?.name}</p>
@@ -791,7 +808,7 @@ export default function Invoices() {
                   </TableRow>
                 </TableBody>
               </Table>
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-wrap justify-end gap-2">
                 <Button variant="outline" onClick={() => openPrintableInvoice(viewing)}>Print</Button>
                 <Button className="bg-gradient-primary" onClick={() => downloadInvoicePdf(viewing)}>
                   <Download className="mr-2 h-4 w-4" /> Download PDF

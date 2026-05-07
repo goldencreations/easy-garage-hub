@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, Plus, Eye, Pencil, Trash2 } from "lucide-react";
+import { Loader2, Plus, Eye, Pencil, Trash2, MoreHorizontal } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataCard } from "@/components/DataCard";
 import { SearchBar } from "@/components/SearchBar";
@@ -26,6 +26,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   createCustomerRequest,
   deleteCustomerRequest,
@@ -157,7 +158,7 @@ export default function Customers() {
                   <Label>Full Name</Label>
                   <Input name="name" required defaultValue={editing?.name} placeholder="e.g. John Mwangi" />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Phone Number</Label>
                     <Input name="phone" required defaultValue={editing?.phone} placeholder="+254 7…" />
@@ -225,7 +226,7 @@ export default function Customers() {
                       <Badge variant="secondary">{c.cars_count ?? owned.length}</Badge>
                     </TableCell>
                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex justify-end gap-1">
+                      <div className="hidden justify-end gap-1 sm:flex">
                         <Button size="icon" variant="ghost" onClick={() => navigate(`/customers/${c.id}`)}>
                           <Eye className="h-4 w-4" />
                         </Button>
@@ -235,6 +236,20 @@ export default function Customers() {
                         <Button size="icon" variant="ghost" onClick={() => void handleDelete(c.id)}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
+                      </div>
+                      <div className="flex justify-end sm:hidden">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="icon" variant="ghost" aria-label="Open actions">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => navigate(`/customers/${c.id}`)}>View</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEdit(c)}>Edit</DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void handleDelete(c.id)}>Delete</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </TableCell>
                   </TableRow>

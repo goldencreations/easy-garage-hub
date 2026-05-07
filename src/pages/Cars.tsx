@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, Plus, Eye, Pencil, Trash2 } from "lucide-react";
+import { Loader2, Plus, Eye, Pencil, Trash2, MoreHorizontal } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataCard } from "@/components/DataCard";
 import { SearchBar } from "@/components/SearchBar";
@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   createCarRequest,
   deleteCarRequest,
@@ -194,11 +195,11 @@ export default function Cars() {
                   </Select>
                   <p className="text-xs text-muted-foreground">A customer can own more than one car.</p>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-2"><Label>Plate Number *</Label><Input name="plate_number" required defaultValue={editing?.plate_number} placeholder="T 123 ABC" /></div>
                   <div className="space-y-2"><Label>Year *</Label><Input name="model_year" required placeholder="2020" defaultValue={editing?.model_year} /></div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-2"><Label>Vehicle Type *</Label><Input name="vehicle_type" required placeholder="Toyota Corolla" defaultValue={editing?.vehicle_type} /></div>
                   <div className="space-y-2"><Label>Color *</Label><Input name="color" required placeholder="White" defaultValue={editing?.color} /></div>
                 </div>
@@ -254,7 +255,7 @@ export default function Cars() {
                     <TableCell className="hidden md:table-cell">{c.color}</TableCell>
                     <TableCell>{owner?.name ?? "—"}</TableCell>
                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex justify-end gap-1">
+                      <div className="hidden justify-end gap-1 sm:flex">
                         <Button size="icon" variant="ghost" onClick={() => navigate(`/cars/${c.id}`)}>
                           <Eye className="h-4 w-4" />
                         </Button>
@@ -264,6 +265,20 @@ export default function Cars() {
                         <Button size="icon" variant="ghost" onClick={() => void handleDelete(c.id)}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
+                      </div>
+                      <div className="flex justify-end sm:hidden">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="icon" variant="ghost" aria-label="Open actions">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => navigate(`/cars/${c.id}`)}>View</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEdit(c)}>Edit</DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void handleDelete(c.id)}>Delete</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </TableCell>
                   </TableRow>

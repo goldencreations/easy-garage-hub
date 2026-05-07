@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Download, Eye, FileText, RefreshCw, User, Wrench, X } from "lucide-react";
+import { ArrowLeft, Download, Eye, FileText, RefreshCw, User, Wrench, X, MoreHorizontal } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataCard } from "@/components/DataCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/AuthContext";
 import { buildInvoicePdf, downloadInvoicePdf } from "@/lib/invoice-pdf";
 import { formatCurrency, type Car as MockCar, type Customer as MockCustomer, type Invoice as MockInvoice } from "@/lib/mock-data";
@@ -218,7 +219,7 @@ export default function CarDetail() {
               <TableRow>
                 <TableHead>Date</TableHead>
                 <TableHead>Problem</TableHead>
-                <TableHead>Fix</TableHead>
+                <TableHead className="hidden md:table-cell">Fix</TableHead>
                 <TableHead>Staff</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
@@ -229,7 +230,7 @@ export default function CarDetail() {
                 <TableRow key={service.id}>
                   <TableCell>{formatDate(service.date)}</TableCell>
                   <TableCell>{service.problem}</TableCell>
-                  <TableCell>{service.fix ?? "—"}</TableCell>
+                  <TableCell className="hidden md:table-cell">{service.fix ?? "—"}</TableCell>
                   <TableCell>{service.leading_staff?.name ?? "—"}</TableCell>
                   <TableCell><Badge variant="outline">{service.status}</Badge></TableCell>
                 </TableRow>
@@ -268,13 +269,28 @@ export default function CarDetail() {
                   <TableCell>{formatCurrency(invoice.total)}</TableCell>
                   <TableCell><Badge variant="outline">{invoice.payment_status}</Badge></TableCell>
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
+                    <div className="hidden justify-end gap-1 sm:flex">
                       <Button size="sm" variant="outline" onClick={() => void handlePreviewPdf(invoice)}>
-                        <Eye className="mr-1 h-4 w-4" /> Preview PDF
+                        <Eye className="h-4 w-4 sm:mr-1" />
+                        <span className="hidden sm:inline">Preview PDF</span>
                       </Button>
                       <Button size="sm" variant="ghost" onClick={() => void handleExportPdf(invoice)}>
-                        <Download className="mr-1 h-4 w-4" /> PDF
+                        <Download className="h-4 w-4 sm:mr-1" />
+                        <span className="hidden sm:inline">PDF</span>
                       </Button>
+                    </div>
+                    <div className="flex justify-end sm:hidden">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" aria-label="Open actions">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => void handlePreviewPdf(invoice)}>Preview PDF</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => void handleExportPdf(invoice)}>PDF</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </TableCell>
                 </TableRow>

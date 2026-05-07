@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
   ({ className, ...props }, ref) => (
     <div className="relative w-full overflow-auto">
-      <table ref={ref} className={cn("w-full caption-bottom text-sm", className)} {...props} />
+      <table ref={ref} className={cn("w-full caption-bottom text-xs sm:text-sm", className)} {...props} />
     </div>
   ),
 );
@@ -46,7 +46,7 @@ const TableHead = React.forwardRef<HTMLTableCellElement, React.ThHTMLAttributes<
     <th
       ref={ref}
       className={cn(
-        "h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",
+        "h-9 px-2 text-left align-middle text-[11px] font-medium text-muted-foreground sm:h-12 sm:px-4 sm:text-sm [&:has([role=checkbox])]:pr-0",
         className,
       )}
       {...props}
@@ -57,7 +57,14 @@ TableHead.displayName = "TableHead";
 
 const TableCell = React.forwardRef<HTMLTableCellElement, React.TdHTMLAttributes<HTMLTableCellElement>>(
   ({ className, ...props }, ref) => (
-    <td ref={ref} className={cn("p-4 align-middle [&:has([role=checkbox])]:pr-0", className)} {...props} />
+    <td
+      ref={ref}
+      className={cn(
+        "break-words p-2 align-middle text-[11px] sm:p-4 sm:text-sm [&:has([role=checkbox])]:pr-0 [&_button]:h-7 [&_button]:px-2 [&_button]:text-[11px] sm:[&_button]:h-9 sm:[&_button]:px-3 sm:[&_button]:text-sm [&_button_svg]:h-3.5 [&_button_svg]:w-3.5 sm:[&_button_svg]:h-4 sm:[&_button_svg]:w-4 [&_[role=combobox]]:h-7 [&_[role=combobox]]:text-[11px] sm:[&_[role=combobox]]:h-9 sm:[&_[role=combobox]]:text-sm",
+        className,
+      )}
+      {...props}
+    />
   ),
 );
 TableCell.displayName = "TableCell";

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Calendar, Loader2, Pencil, Plus, Receipt, Trash2, TrendingDown } from "lucide-react";
+import { Calendar, Loader2, Pencil, Plus, Receipt, Trash2, TrendingDown, MoreHorizontal } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataCard } from "@/components/DataCard";
 import { SearchBar } from "@/components/SearchBar";
@@ -19,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   createExpenseRequest,
   deleteExpenseRequest,
@@ -177,7 +178,7 @@ export default function Expenses() {
               <DialogHeader><DialogTitle>{editing ? "Update Expense" : "Record New Expense"}</DialogTitle></DialogHeader>
               <form className="space-y-4" onSubmit={handleSave}>
                 <div className="space-y-2"><Label>Expense Title *</Label><Input name="title" required defaultValue={editing?.title} placeholder="e.g. Workshop rent" /></div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Category *</Label>
                     <Select value={category} onValueChange={(value) => setCategory(value as ExpenseApi["category"])}>
@@ -235,7 +236,7 @@ export default function Expenses() {
               <TableRow>
                 <TableHead>Date</TableHead>
                 <TableHead>Expense</TableHead>
-                <TableHead>Category</TableHead>
+                <TableHead className="hidden sm:table-cell">Category</TableHead>
                 <TableHead className="hidden md:table-cell">Description</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -253,17 +254,31 @@ export default function Expenses() {
                 <TableRow key={expense.id}>
                   <TableCell>{formatDate(expense.date)}</TableCell>
                   <TableCell className="font-semibold">{expense.title}</TableCell>
-                  <TableCell><Badge variant="secondary">{CATEGORIES.find((cat) => cat.value === expense.category)?.label ?? expense.category}</Badge></TableCell>
+                  <TableCell className="hidden sm:table-cell"><Badge variant="secondary">{CATEGORIES.find((cat) => cat.value === expense.category)?.label ?? expense.category}</Badge></TableCell>
                   <TableCell className="hidden md:table-cell text-muted-foreground">{expense.description}</TableCell>
                   <TableCell className="text-right font-bold">{formatCurrency(expense.amount)}</TableCell>
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
+                    <div className="hidden flex-wrap justify-end gap-1 sm:flex">
                       <Button size="sm" variant="ghost" onClick={() => openEdit(expense)}>
-                        <Pencil className="mr-1 h-4 w-4" /> Edit
+                        <Pencil className="h-4 w-4 sm:mr-1" />
+                        <span className="hidden sm:inline">Edit</span>
                       </Button>
                       <Button size="icon" variant="ghost" onClick={() => void handleDelete(expense.id)}>
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
+                    </div>
+                    <div className="flex justify-end sm:hidden">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" aria-label="Open actions">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEdit(expense)}>Edit</DropdownMenuItem>
+                          <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void handleDelete(expense.id)}>Delete</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </TableCell>
                 </TableRow>

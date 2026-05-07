@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2, Pencil, Plus, Trash2, UserCog } from "lucide-react";
+import { Loader2, Pencil, Plus, Trash2, UserCog, MoreHorizontal } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataCard } from "@/components/DataCard";
 import { SearchBar } from "@/components/SearchBar";
@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   createStaffRequest,
   deleteStaffRequest,
@@ -153,8 +154,8 @@ export default function Staff() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Skills</TableHead>
+                <TableHead className="hidden sm:table-cell">Phone</TableHead>
+                <TableHead className="hidden md:table-cell">Skills</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -176,16 +177,30 @@ export default function Staff() {
                       {staff.name}
                     </div>
                   </TableCell>
-                  <TableCell>{staff.phone}</TableCell>
-                  <TableCell className="max-w-xl">{staff.skills}</TableCell>
+                  <TableCell className="hidden sm:table-cell">{staff.phone}</TableCell>
+                  <TableCell className="hidden md:table-cell max-w-xl">{staff.skills}</TableCell>
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
+                    <div className="hidden flex-wrap justify-end gap-1 sm:flex">
                       <Button size="sm" variant="ghost" onClick={() => openEdit(staff)}>
-                        <Pencil className="mr-1 h-4 w-4" /> Edit
+                        <Pencil className="h-4 w-4 sm:mr-1" />
+                        <span className="hidden sm:inline">Edit</span>
                       </Button>
                       <Button size="icon" variant="ghost" onClick={() => void handleDelete(staff.id)}>
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
+                    </div>
+                    <div className="flex justify-end sm:hidden">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" aria-label="Open actions">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEdit(staff)}>Edit</DropdownMenuItem>
+                          <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void handleDelete(staff.id)}>Delete</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </TableCell>
                 </TableRow>

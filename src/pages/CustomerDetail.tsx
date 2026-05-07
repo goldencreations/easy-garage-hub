@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Calendar, Car as CarIcon, Download, Eye, FileText, RefreshCw, X } from "lucide-react";
+import { ArrowLeft, Calendar, Car as CarIcon, Download, Eye, FileText, RefreshCw, X, MoreHorizontal } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataCard } from "@/components/DataCard";
 import { StatCard } from "@/components/StatCard";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/AuthContext";
 import { buildInvoicePdf, downloadInvoicePdf } from "@/lib/invoice-pdf";
 import { formatCurrency, type Car as MockCar, type Customer as MockCustomer, type Invoice as MockInvoice } from "@/lib/mock-data";
@@ -195,8 +196,8 @@ export default function CustomerDetail() {
               <TableRow>
                 <TableHead>Plate</TableHead>
                 <TableHead>Vehicle</TableHead>
-                <TableHead>Year</TableHead>
-                <TableHead>Color</TableHead>
+                <TableHead className="hidden md:table-cell">Year</TableHead>
+                <TableHead className="hidden md:table-cell">Color</TableHead>
                 <TableHead className="text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
@@ -206,10 +207,27 @@ export default function CustomerDetail() {
                 <TableRow key={car.id}>
                   <TableCell className="font-mono">{car.plate_number}</TableCell>
                   <TableCell>{car.vehicle_type}</TableCell>
-                  <TableCell>{car.model_year}</TableCell>
-                  <TableCell>{car.color}</TableCell>
+                  <TableCell className="hidden md:table-cell">{car.model_year}</TableCell>
+                  <TableCell className="hidden md:table-cell">{car.color}</TableCell>
                   <TableCell className="text-right">
-                    <Link to={`/cars/${car.id}`}><Button size="sm" variant="ghost">View History</Button></Link>
+                    <Link to={`/cars/${car.id}`} className="hidden sm:inline-flex">
+                      <Button size="sm" variant="ghost">
+                        <Eye className="h-4 w-4 sm:mr-1" />
+                        <span className="hidden sm:inline">View History</span>
+                      </Button>
+                    </Link>
+                    <div className="flex justify-end sm:hidden">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" aria-label="Open actions">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => navigate(`/cars/${car.id}`)}>View History</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -249,13 +267,28 @@ export default function CustomerDetail() {
                   <TableCell>{formatCurrency(invoice.total)}</TableCell>
                   <TableCell><Badge variant="outline">{invoice.payment_status}</Badge></TableCell>
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
+                    <div className="hidden justify-end gap-1 sm:flex">
                       <Button size="sm" variant="outline" onClick={() => void handlePreviewPdf(invoice)}>
-                        <Eye className="mr-1 h-4 w-4" /> Preview PDF
+                        <Eye className="h-4 w-4 sm:mr-1" />
+                        <span className="hidden sm:inline">Preview PDF</span>
                       </Button>
                       <Button size="sm" variant="ghost" onClick={() => void handleExportPdf(invoice)}>
-                        <Download className="mr-1 h-4 w-4" /> PDF
+                        <Download className="h-4 w-4 sm:mr-1" />
+                        <span className="hidden sm:inline">PDF</span>
                       </Button>
+                    </div>
+                    <div className="flex justify-end sm:hidden">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" aria-label="Open actions">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => void handlePreviewPdf(invoice)}>Preview PDF</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => void handleExportPdf(invoice)}>PDF</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -305,7 +338,7 @@ export default function CustomerDetail() {
                 <TableHead>Date</TableHead>
                 <TableHead>Car</TableHead>
                 <TableHead>Problem</TableHead>
-                <TableHead>Fix</TableHead>
+                <TableHead className="hidden md:table-cell">Fix</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
@@ -316,7 +349,7 @@ export default function CustomerDetail() {
                   <TableCell>{formatDate(service.date)}</TableCell>
                   <TableCell>{(service.car as CarApi | undefined)?.plate_number ?? carById.get(String(service.car_id))?.plate_number ?? "—"}</TableCell>
                   <TableCell>{service.problem}</TableCell>
-                  <TableCell>{service.fix ?? "—"}</TableCell>
+                  <TableCell className="hidden md:table-cell">{service.fix ?? "—"}</TableCell>
                   <TableCell><Badge variant="outline">{service.status}</Badge></TableCell>
                 </TableRow>
               ))}

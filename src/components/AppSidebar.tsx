@@ -39,11 +39,16 @@ const items = [
 ];
 
 export function AppSidebar() {
-  const { state } = useSidebar();
+  const { state, isMobile, setOpenMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const { pathname } = useLocation();
   const isActive = (path: string) =>
     path === "/" ? pathname === "/" : pathname.startsWith(path);
+  const handleNavigate = () => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  };
 
   return (
     <Sidebar collapsible="icon" className="border-r-0">
@@ -78,7 +83,7 @@ export function AppSidebar() {
                     className="h-11 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-primary data-[active=true]:text-sidebar-primary-foreground data-[active=true]:font-semibold"
                     tooltip={item.title}
                   >
-                    <NavLink to={item.url} end={item.url === "/"}>
+                    <NavLink to={item.url} end={item.url === "/"} onClick={handleNavigate}>
                       <item.icon className="h-5 w-5" />
                       <span className="text-sm">{item.title}</span>
                     </NavLink>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2, Plus, Pencil, ShieldCheck, Trash2 } from "lucide-react";
+import { Loader2, Plus, Pencil, ShieldCheck, Trash2, MoreHorizontal } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataCard } from "@/components/DataCard";
 import { SearchBar } from "@/components/SearchBar";
@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   createAdminRequest,
   deleteAdminRequest,
@@ -176,7 +177,7 @@ export default function Users() {
                 <form className="space-y-4" onSubmit={handleSave}>
                   <div className="space-y-2"><Label>Full Name *</Label><Input name="name" required defaultValue={editing?.name} placeholder="e.g. David Mushi" /></div>
                   <div className="space-y-2"><Label>Email *</Label><Input name="email" required type="email" defaultValue={editing?.email} placeholder="user@garage.co.tz" /></div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label>Role *</Label>
                       <Select value={role} onValueChange={(v) => setRole(v as UiUser["role"])}>
@@ -266,9 +267,10 @@ export default function Users() {
                   </TableCell>
                   {canManageUsers && (
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
+                      <div className="hidden flex-wrap justify-end gap-1 sm:flex">
                         <Button size="sm" variant="ghost" onClick={() => openEdit(u)}>
-                          <Pencil className="mr-1 h-4 w-4" /> Edit
+                          <Pencil className="h-4 w-4 sm:mr-1" />
+                          <span className="hidden sm:inline">Edit</span>
                         </Button>
                         <Button
                           size="icon"
@@ -278,6 +280,25 @@ export default function Users() {
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
+                      </div>
+                      <div className="flex justify-end sm:hidden">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="icon" variant="ghost" aria-label="Open actions">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openEdit(u)}>Edit</DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              disabled={String(currentUser?.id) === u.id}
+                              onClick={() => void handleDelete(u.id)}
+                            >
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </TableCell>
                   )}

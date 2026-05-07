@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BadgeDollarSign, Loader2, Pencil, Plus, ReceiptText, Trash2 } from "lucide-react";
+import { BadgeDollarSign, Loader2, Pencil, Plus, ReceiptText, Trash2, MoreHorizontal } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataCard } from "@/components/DataCard";
 import { SearchBar } from "@/components/SearchBar";
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   createCreditPurchaseRequest,
   deleteCreditPurchaseRequest,
@@ -195,7 +196,7 @@ export default function CreditPurchases() {
                   <Label>Supplier Name *</Label>
                   <Input name="supplier_name" required defaultValue={editing?.supplier_name} placeholder="e.g. ABC Auto Spares" />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Total Amount (TSH) *</Label>
                     <Input
@@ -250,10 +251,10 @@ export default function CreditPurchases() {
               value={supplierFilter}
               onChange={(e) => setSupplierFilter(e.target.value)}
               placeholder="Filter by supplier..."
-              className="w-52"
+              className="w-full sm:w-52"
             />
             <Select value={statusFilter || "all"} onValueChange={(value) => setStatusFilter(value === "all" ? "" : (value as CreditPurchasePaymentStatus))}>
-              <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder="Status" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
                 {PAYMENT_STATUS_OPTIONS.map((option) => (
@@ -271,10 +272,10 @@ export default function CreditPurchases() {
               <TableRow>
                 <TableHead>Date</TableHead>
                 <TableHead>Item</TableHead>
-                <TableHead>Supplier</TableHead>
+                <TableHead className="hidden md:table-cell">Supplier</TableHead>
                 <TableHead className="text-right">Total</TableHead>
-                <TableHead className="text-right">Paid</TableHead>
-                <TableHead className="text-right">Due</TableHead>
+                <TableHead className="hidden sm:table-cell text-right">Paid</TableHead>
+                <TableHead className="hidden sm:table-cell text-right">Due</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -291,23 +292,37 @@ export default function CreditPurchases() {
                 <TableRow key={purchase.id}>
                   <TableCell>{formatDate(purchase.date)}</TableCell>
                   <TableCell className="font-semibold">{purchase.item_name}</TableCell>
-                  <TableCell>{purchase.supplier_name}</TableCell>
+                  <TableCell className="hidden md:table-cell">{purchase.supplier_name}</TableCell>
                   <TableCell className="text-right font-semibold">{formatCurrency(purchase.total_amount)}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(purchase.amount_paid)}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(purchase.amount_due)}</TableCell>
+                  <TableCell className="hidden sm:table-cell text-right">{formatCurrency(purchase.amount_paid)}</TableCell>
+                  <TableCell className="hidden sm:table-cell text-right">{formatCurrency(purchase.amount_due)}</TableCell>
                   <TableCell>
                     <Badge className={statusBadge(purchase.payment_status)}>
                       {purchase.payment_status}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
+                    <div className="hidden flex-wrap justify-end gap-1 sm:flex">
                       <Button size="sm" variant="ghost" onClick={() => openEdit(purchase)}>
-                        <Pencil className="mr-1 h-4 w-4" /> Edit
+                        <Pencil className="h-4 w-4 sm:mr-1" />
+                        <span className="hidden sm:inline">Edit</span>
                       </Button>
                       <Button size="icon" variant="ghost" onClick={() => void handleDelete(purchase.id)}>
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
+                    </div>
+                    <div className="flex justify-end sm:hidden">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" aria-label="Open actions">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEdit(purchase)}>Edit</DropdownMenuItem>
+                          <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void handleDelete(purchase.id)}>Delete</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </TableCell>
                 </TableRow>

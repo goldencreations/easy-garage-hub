@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Plus, Trash2, MoreHorizontal } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataCard } from "@/components/DataCard";
 import { SearchBar } from "@/components/SearchBar";
@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   createServiceRequest,
   deleteServiceRequest,
@@ -423,7 +424,7 @@ export default function Services() {
               <DialogContent className="max-w-xl">
                 <DialogHeader><DialogTitle>New Service Record</DialogTitle></DialogHeader>
                 <form className="space-y-4" onSubmit={handleAdd}>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label>Car *</Label>
                       <Select value={carId} onValueChange={setCarId} open={carSelectOpen} onOpenChange={setCarSelectOpen}>
@@ -448,7 +449,7 @@ export default function Services() {
                   </div>
                   <div className="space-y-2"><Label>Problem Reported *</Label><Input name="problem" required placeholder="e.g. Engine overheating" /></div>
                   <div className="space-y-2"><Label>Fix Performed</Label><Textarea name="fix" placeholder="Describe what was done" /></div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label>Staff *</Label>
                       <Select value={staffId} onValueChange={setStaffId} open={staffSelectOpen} onOpenChange={setStaffSelectOpen}>
@@ -486,7 +487,7 @@ export default function Services() {
                       <Button type="button" variant="outline" size="sm" onClick={() => addStockRow(false)}>Add Stock</Button>
                     </div>
                     {stockItems.map((item, index) => (
-                      <div key={`create-stock-${index}`} className="grid grid-cols-[1fr,120px,40px] gap-2">
+                      <div key={`create-stock-${index}`} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr,120px,40px]">
                         <Select
                           value={item.stock_id}
                           onValueChange={(value) => updateStockRow(index, "stock_id", value, false)}
@@ -540,7 +541,7 @@ export default function Services() {
           <DialogHeader><DialogTitle>Update Service Record</DialogTitle></DialogHeader>
           {editingService && (
             <form className="space-y-4" onSubmit={handleUpdate}>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Car *</Label>
                   <Select value={editCarId} onValueChange={setEditCarId} open={editCarSelectOpen} onOpenChange={setEditCarSelectOpen}>
@@ -565,7 +566,7 @@ export default function Services() {
               </div>
               <div className="space-y-2"><Label>Problem Reported *</Label><Input name="problem" required defaultValue={editingService.problem} /></div>
               <div className="space-y-2"><Label>Fix Performed</Label><Textarea name="fix" defaultValue={editingService.fix ?? ""} /></div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Staff *</Label>
                   <Select value={editStaffId} onValueChange={setEditStaffId} open={editStaffSelectOpen} onOpenChange={setEditStaffSelectOpen}>
@@ -603,7 +604,7 @@ export default function Services() {
                   <Button type="button" variant="outline" size="sm" onClick={() => addStockRow(true)}>Add Stock</Button>
                 </div>
                 {editStockItems.map((item, index) => (
-                  <div key={`edit-stock-${index}`} className="grid grid-cols-[1fr,120px,40px] gap-2">
+                  <div key={`edit-stock-${index}`} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr,120px,40px]">
                     <Select
                       value={item.stock_id}
                       onValueChange={(value) => updateStockRow(index, "stock_id", value, true)}
@@ -664,12 +665,12 @@ export default function Services() {
               <TableRow>
                 <TableHead>Date</TableHead>
                 <TableHead>Car</TableHead>
-                <TableHead>Customer</TableHead>
+                <TableHead className="hidden sm:table-cell">Customer</TableHead>
                 <TableHead>Problem</TableHead>
                 <TableHead className="hidden md:table-cell">Fix</TableHead>
-                <TableHead>Total</TableHead>
-                <TableHead>Staff</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead className="hidden md:table-cell">Total</TableHead>
+                <TableHead className="hidden md:table-cell">Staff</TableHead>
+                <TableHead className="hidden sm:table-cell">Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -691,12 +692,12 @@ export default function Services() {
                     <TableCell>
                       <span className="rounded bg-primary/10 px-2 py-1 font-mono text-xs font-bold text-primary">{car?.plate_number}</span>
                     </TableCell>
-                    <TableCell>{cust?.name}</TableCell>
+                    <TableCell className="hidden sm:table-cell">{cust?.name}</TableCell>
                     <TableCell className="font-medium">{s.problem}</TableCell>
                     <TableCell className="hidden md:table-cell text-muted-foreground">{s.fix}</TableCell>
-                    <TableCell className="font-semibold">{formatCurrency(invoiceTotal ?? 0)}</TableCell>
-                    <TableCell>{s.leading_staff?.name ?? "—"}</TableCell>
-                    <TableCell>
+                    <TableCell className="hidden md:table-cell font-semibold">{formatCurrency(invoiceTotal ?? 0)}</TableCell>
+                    <TableCell className="hidden md:table-cell">{s.leading_staff?.name ?? "—"}</TableCell>
+                    <TableCell className="hidden sm:table-cell">
                       <Select value={s.status} onValueChange={(value) => void handleStatusChange(s.id, value as ServiceStatus)}>
                         <SelectTrigger className="h-8 min-w-32">
                           <SelectValue />
@@ -709,17 +710,41 @@ export default function Services() {
                       </Select>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Badge className={
+                      <Badge className={`hidden sm:inline-flex ${
                         s.status === "complete" ? "bg-success text-success-foreground hover:bg-success" :
                         s.status === "onprogress" ? "bg-warning text-warning-foreground hover:bg-warning" :
                         "bg-muted text-muted-foreground hover:bg-muted"
-                      }>{statusLabel(s.status)}</Badge>
-                      <Button size="icon" variant="ghost" onClick={() => handleOpenEdit(s)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button size="icon" variant="ghost" onClick={() => void handleDelete(s.id)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      }`}>{statusLabel(s.status)}</Badge>
+                      <div className="hidden items-center justify-end gap-1 sm:flex">
+                        <Button size="icon" variant="ghost" onClick={() => handleOpenEdit(s)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => void handleDelete(s.id)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                      <div className="flex justify-end sm:hidden">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="icon" variant="ghost" aria-label="Open actions">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => void handleStatusChange(s.id, "pending")}>
+                              Mark Pending
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => void handleStatusChange(s.id, "onprogress")}>
+                              Mark In Progress
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => void handleStatusChange(s.id, "complete")}>
+                              Mark Completed
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleOpenEdit(s)}>Edit</DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void handleDelete(s.id)}>Delete</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );

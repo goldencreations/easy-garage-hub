@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Pencil, AlertTriangle, Package, PackageX, Layers, Trash2, Loader2, RefreshCcw } from "lucide-react";
+import { Plus, Pencil, AlertTriangle, Package, PackageX, Layers, Trash2, Loader2, RefreshCcw, MoreHorizontal } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataCard } from "@/components/DataCard";
 import { SearchBar } from "@/components/SearchBar";
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   createStockCategoryRequest,
   createStockRequest,
@@ -286,7 +287,7 @@ export default function Stock() {
                 <DialogHeader><DialogTitle>{editing ? "Update Stock Item" : "Add Stock Item"}</DialogTitle></DialogHeader>
                 <form className="space-y-4" onSubmit={handleSave}>
                   <div className="space-y-2"><Label>Item Name *</Label><Input name="name" required defaultValue={editing?.name} placeholder="e.g. Engine Oil 5W-30" /></div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label>Category *</Label>
                       <Select value={category} onValueChange={setCategory}>
@@ -296,7 +297,7 @@ export default function Stock() {
                     </div>
                     <div className="space-y-2"><Label>Price (TSH) *</Label><Input name="price" required type="number" min="0" defaultValue={editing?.price} /></div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-2"><Label>Quantity *</Label><Input name="quantity" required type="number" min="0" defaultValue={editing?.quantity} /></div>
                   </div>
                   <DialogFooter>
@@ -362,16 +363,32 @@ export default function Stock() {
                       )}
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
+                      <div className="hidden flex-wrap justify-end gap-1 sm:flex">
                         <Button size="sm" variant="ghost" onClick={() => openRestock(s)}>
-                          <RefreshCcw className="mr-1 h-4 w-4" /> Restock
+                          <RefreshCcw className="h-4 w-4 sm:mr-1" />
+                          <span className="hidden sm:inline">Restock</span>
                         </Button>
                         <Button size="sm" variant="ghost" onClick={() => openEdit(s)}>
-                          <Pencil className="mr-1 h-4 w-4" /> Update
+                          <Pencil className="h-4 w-4 sm:mr-1" />
+                          <span className="hidden sm:inline">Update</span>
                         </Button>
                         <Button size="icon" variant="ghost" onClick={() => void handleDeleteStock(s.id)}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
+                      </div>
+                      <div className="flex justify-end sm:hidden">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="icon" variant="ghost" aria-label="Open actions">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openRestock(s)}>Restock</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEdit(s)}>Update</DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void handleDeleteStock(s.id)}>Delete</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </TableCell>
                   </TableRow>
