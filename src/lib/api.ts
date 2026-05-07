@@ -157,6 +157,21 @@ export type ExpenseApi = {
   amount: number;
 };
 
+export type CreditPurchasePaymentStatus = "unpaid" | "partial" | "paid";
+
+export type CreditPurchaseApi = {
+  id: number | string;
+  item_name: string;
+  supplier_name: string;
+  total_amount: number | string;
+  amount_paid: number | string;
+  amount_due: number | string;
+  payment_status: CreditPurchasePaymentStatus;
+  date: string;
+  expense_id?: number | string | null;
+  expense?: ExpenseApi | null;
+};
+
 export type AdminStatsFilter = "weekly" | "monthly" | "yearly";
 
 export type AdminStatsApi = {
@@ -507,6 +522,14 @@ export function deleteStockRequest(token: string, stockId: string | number) {
   });
 }
 
+export function restockStockRequest(token: string, stockId: string | number, quantity: number) {
+  return apiRequest<StockApi>(`/stocks/${stockId}/restock`, {
+    method: "PATCH",
+    token,
+    body: { quantity },
+  });
+}
+
 export function listServicesRequest(
   token: string,
   params?: {
@@ -695,6 +718,73 @@ export function updateExpenseRequest(
 
 export function deleteExpenseRequest(token: string, expenseId: string | number) {
   return apiRequest<[] | Record<string, never>>(`/expenses/${expenseId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export function listCreditPurchasesRequest(
+  token: string,
+  params?: {
+    search?: string;
+    payment_status?: CreditPurchasePaymentStatus | "";
+    supplier_name?: string;
+  },
+) {
+  const query = new URLSearchParams();
+  if (params?.search?.trim()) query.set("search", params.search.trim());
+  if (params?.payment_status) query.set("payment_status", params.payment_status);
+  if (params?.supplier_name?.trim()) query.set("supplier_name", params.supplier_name.trim());
+  return apiRequest<CreditPurchaseApi[]>(`/credit-purchases${query.toString() ? `?${query.toString()}` : ""}`, {
+    method: "GET",
+    token,
+  });
+}
+
+export function createCreditPurchaseRequest(
+  token: string,
+  payload: {
+    item_name: string;
+    supplier_name: string;
+    total_amount: number;
+    amount_paid?: number;
+    date: string;
+  },
+) {
+  return apiRequest<CreditPurchaseApi>("/credit-purchases", {
+    method: "POST",
+    token,
+    body: payload,
+  });
+}
+
+export function getCreditPurchaseRequest(token: string, creditPurchaseId: string | number) {
+  return apiRequest<CreditPurchaseApi>(`/credit-purchases/${creditPurchaseId}`, {
+    method: "GET",
+    token,
+  });
+}
+
+export function updateCreditPurchaseRequest(
+  token: string,
+  creditPurchaseId: string | number,
+  payload: {
+    item_name?: string;
+    supplier_name?: string;
+    total_amount?: number;
+    amount_paid?: number;
+    date?: string;
+  },
+) {
+  return apiRequest<CreditPurchaseApi>(`/credit-purchases/${creditPurchaseId}`, {
+    method: "PUT",
+    token,
+    body: payload,
+  });
+}
+
+export function deleteCreditPurchaseRequest(token: string, creditPurchaseId: string | number) {
+  return apiRequest<[] | Record<string, never>>(`/credit-purchases/${creditPurchaseId}`, {
     method: "DELETE",
     token,
   });

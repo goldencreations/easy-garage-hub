@@ -6,6 +6,7 @@ import {
   Wrench,
   FileText,
   Receipt,
+  BadgeDollarSign,
   Package,
   UserCog,
   UserRound,
@@ -32,6 +33,7 @@ const items = [
   { title: "Staff", url: "/staff", icon: UserRound },
   { title: "Invoices", url: "/invoices", icon: FileText },
   { title: "Expenses", url: "/expenses", icon: Receipt },
+  { title: "Credit Purchases", url: "/credit-purchases", icon: BadgeDollarSign },
   { title: "Stock", url: "/stock", icon: Package },
   { title: "Users", url: "/users", icon: UserCog },
 ];

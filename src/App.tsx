@@ -15,6 +15,7 @@ import Services from "./pages/Services";
 import Staff from "./pages/Staff";
 import Invoices from "./pages/Invoices";
 import Expenses from "./pages/Expenses";
+import CreditPurchases from "./pages/CreditPurchases";
 import Stock from "./pages/Stock";
 import Users from "./pages/Users";
 import Login from "./pages/Login";
@@ -44,6 +45,7 @@ const App = () => (
                 <Route path="/staff" element={<Staff />} />
                 <Route path="/invoices" element={<Invoices />} />
                 <Route path="/expenses" element={<Expenses />} />
+                <Route path="/credit-purchases" element={<CreditPurchases />} />
                 <Route path="/stock" element={<Stock />} />
                 <Route path="/users" element={<Users />} />
                 <Route path="*" element={<NotFound />} />

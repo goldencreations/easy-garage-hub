@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Pencil, AlertTriangle, Package, PackageX, Layers, Trash2, Loader2 } from "lucide-react";
+import { Plus, Pencil, AlertTriangle, Package, PackageX, Layers, Trash2, Loader2, RefreshCcw } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataCard } from "@/components/DataCard";
 import { SearchBar } from "@/components/SearchBar";
@@ -25,6 +25,7 @@ import {
   deleteStockRequest,
   listStockCategoriesRequest,
   listStocksRequest,
+  restockStockRequest,
   updateStockCategoryRequest,
   updateStockRequest,
   type StockApi,
@@ -47,10 +48,13 @@ export default function Stock() {
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [categoryName, setCategoryName] = useState("");
   const [editingCategory, setEditingCategory] = useState<StockCategoryApi | null>(null);
+  const [restockOpen, setRestockOpen] = useState(false);
+  const [restockingItem, setRestockingItem] = useState<StockApi | null>(null);
+  const [restockQty, setRestockQty] = useState("1");
 
   const filtered = list;
 
-  const lowCount = list.filter((s) => s.status !== "available").length;
+  const lowCount = list.filter((s) => Number(s.quantity) < 5).length;
   const totalValue = list.reduce((sum, s) => sum + s.price * s.quantity, 0);
   const categoryNameById = useMemo(() => new Map(categories.map((cat) => [String(cat.id), cat.name])), [categories]);
 
@@ -83,7 +87,7 @@ export default function Stock() {
 
   const computeStatus = (quantity: number): "available" | "low" | "out_of_stock" => {
     if (quantity <= 0) return "out_of_stock";
-    if (quantity <= 5) return "low";
+    if (quantity < 5) return "low";
     return "available";
   };
 
@@ -137,6 +141,35 @@ export default function Stock() {
       toast.success("Stock item deleted");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not delete stock item.");
+    }
+  };
+
+  const openRestock = (item: StockApi) => {
+    setRestockingItem(item);
+    setRestockQty("1");
+    setRestockOpen(true);
+  };
+
+  const handleRestock = async () => {
+    if (!token || !restockingItem) return;
+    const quantity = Number(restockQty);
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      toast.error("Restock quantity must be at least 1.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const response = await restockStockRequest(token, restockingItem.id, quantity);
+      setList((prev) => prev.map((item) => (String(item.id) === String(restockingItem.id) ? response.data : item)));
+      toast.success("Stock restocked");
+      setRestockOpen(false);
+      setRestockingItem(null);
+      setRestockQty("1");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not restock item.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -311,33 +344,39 @@ export default function Stock() {
                   </TableCell>
                 </TableRow>
               )}
-              {filtered.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell className="font-semibold">{s.name}</TableCell>
-                  <TableCell><Badge variant="secondary">{s.category?.name ?? categoryNameById.get(String(s.stock_category_id)) ?? "—"}</Badge></TableCell>
-                  <TableCell className="text-right">{formatCurrency(s.price)}</TableCell>
-                  <TableCell className="text-right font-bold">{s.quantity}</TableCell>
-                  <TableCell>
-                    {s.status === "low" ? (
-                      <Badge className={statusClass(s.status)}>
-                        <AlertTriangle className="mr-1 h-3 w-3" /> Low
-                      </Badge>
-                    ) : (
-                      <Badge className={statusClass(s.status)}>{statusLabel(s.status)}</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => openEdit(s)}>
-                        <Pencil className="mr-1 h-4 w-4" /> Update
-                      </Button>
-                      <Button size="icon" variant="ghost" onClick={() => void handleDeleteStock(s.id)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {filtered.map((s) => {
+                const derivedStatus = computeStatus(Number(s.quantity));
+                return (
+                  <TableRow key={s.id}>
+                    <TableCell className="font-semibold">{s.name}</TableCell>
+                    <TableCell><Badge variant="secondary">{s.category?.name ?? categoryNameById.get(String(s.stock_category_id)) ?? "—"}</Badge></TableCell>
+                    <TableCell className="text-right">{formatCurrency(s.price)}</TableCell>
+                    <TableCell className="text-right font-bold">{s.quantity}</TableCell>
+                    <TableCell>
+                      {derivedStatus === "low" ? (
+                        <Badge className={statusClass(derivedStatus)}>
+                          <AlertTriangle className="mr-1 h-3 w-3" /> Low
+                        </Badge>
+                      ) : (
+                        <Badge className={statusClass(derivedStatus)}>{statusLabel(derivedStatus)}</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button size="sm" variant="ghost" onClick={() => openRestock(s)}>
+                          <RefreshCcw className="mr-1 h-4 w-4" /> Restock
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => openEdit(s)}>
+                          <Pencil className="mr-1 h-4 w-4" /> Update
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => void handleDeleteStock(s.id)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
               {!loading && filtered.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
@@ -349,6 +388,35 @@ export default function Stock() {
           </Table>
         </div>
       </DataCard>
+
+      <Dialog open={restockOpen} onOpenChange={setRestockOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Restock Item</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-md bg-muted/50 px-3 py-2 text-sm">
+              <p className="font-medium">{restockingItem?.name}</p>
+              <p className="text-muted-foreground">Current quantity: {restockingItem?.quantity ?? 0}</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Quantity to add *</Label>
+              <Input
+                type="number"
+                min="1"
+                step="1"
+                value={restockQty}
+                onChange={(e) => setRestockQty(e.target.value)}
+                placeholder="e.g. 10"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setRestockOpen(false)} disabled={submitting}>Cancel</Button>
+            <Button type="button" className="bg-gradient-primary" onClick={() => void handleRestock()} disabled={submitting}>
+              {submitting ? "Restocking..." : "Restock"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

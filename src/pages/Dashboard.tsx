@@ -46,7 +46,8 @@ const defaultStats: AdminStatsApi = {
 };
 
 export default function Dashboard() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const isSuperAdmin = user?.role === "super_admin";
   const [filter, setFilter] = useState<AdminStatsFilter>("monthly");
   const [stats, setStats] = useState<AdminStatsApi>(defaultStats);
   const [loading, setLoading] = useState(true);
@@ -63,7 +64,7 @@ export default function Dashboard() {
       setLoading(true);
       try {
         const [statsRes, carsRes, servicesRes] = await Promise.all([
-          adminStatsRequest(token, filter),
+          isSuperAdmin ? adminStatsRequest(token, filter) : Promise.resolve({ data: defaultStats }),
           listCarsRequest(token),
           listServicesRequest(token),
         ]);
@@ -93,7 +94,7 @@ export default function Dashboard() {
     };
 
     void loadData();
-  }, [token, filter]);
+  }, [token, filter, isSuperAdmin]);
 
   const revenueChart = useMemo(
     () => [
@@ -107,18 +108,24 @@ export default function Dashboard() {
     <div className="space-y-6">
       <PageHeader
         title="Dashboard"
-        description={`Statistics from ${formatDate(stats.from_date)} to ${formatDate(stats.to_date)}`}
+        description={
+          isSuperAdmin
+            ? `Statistics from ${formatDate(stats.from_date)} to ${formatDate(stats.to_date)}`
+            : "Overview"
+        }
         actions={
-          <div className="w-44">
-            <Select value={filter} onValueChange={(value) => setFilter(value as AdminStatsFilter)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="weekly">Weekly</SelectItem>
-                <SelectItem value="monthly">Monthly</SelectItem>
-                <SelectItem value="yearly">Yearly</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          isSuperAdmin ? (
+            <div className="w-44">
+              <Select value={filter} onValueChange={(value) => setFilter(value as AdminStatsFilter)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="weekly">Weekly</SelectItem>
+                  <SelectItem value="monthly">Monthly</SelectItem>
+                  <SelectItem value="yearly">Yearly</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null
         }
       />
 
@@ -128,59 +135,63 @@ export default function Dashboard() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-            <StatCard label="Customers" value={stats.customers_count} icon={Users} tone="primary" />
-            <StatCard label="Cars" value={stats.cars_count} icon={Car} tone="accent" />
-            <StatCard label="Invoices" value={stats.invoices_count} icon={FileText} tone="success" />
-            <StatCard label="Stock Items" value={stats.stock_items_count} icon={Package} tone="primary" />
-            <StatCard label="Expenses" value={formatCurrency(stats.expenses_total)} icon={Receipt} tone="warning" />
-            <StatCard label="Revenue" value={formatCurrency(stats.revenues_total)} icon={TrendingUp} tone="success" />
-          </div>
-
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <DataCard title="Revenue Overview">
-              <div className="h-72 p-4">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={revenueChart}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(v) => `${Number(v) / 1000}k`} />
-                    <Tooltip
-                      contentStyle={{
-                        background: "hsl(var(--card))",
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: 8,
-                      }}
-                      formatter={(v: number) => formatCurrency(v)}
-                    />
-                    <Bar dataKey="value" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+          {isSuperAdmin && (
+            <>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                <StatCard label="Customers" value={stats.customers_count} icon={Users} tone="primary" />
+                <StatCard label="Cars" value={stats.cars_count} icon={Car} tone="accent" />
+                <StatCard label="Invoices" value={stats.invoices_count} icon={FileText} tone="success" />
+                <StatCard label="Stock Items" value={stats.stock_items_count} icon={Package} tone="primary" />
+                <StatCard label="Expenses" value={formatCurrency(stats.expenses_total)} icon={Receipt} tone="warning" />
+                <StatCard label="Revenue" value={formatCurrency(stats.revenues_total)} icon={TrendingUp} tone="success" />
               </div>
-            </DataCard>
 
-            <DataCard title="Low Stock Alerts">
-              <div className="divide-y">
-                {stats.low_stock_items.length === 0 && (
-                  <p className="p-5 text-sm text-muted-foreground">All items are well stocked ✅</p>
-                )}
-                {stats.low_stock_items.map((item) => (
-                  <div key={item.id} className="flex items-center gap-3 p-4">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10 text-warning">
-                      <AlertTriangle className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold">{item.name}</p>
-                      <p className="text-xs text-muted-foreground">Category ID: {item.stock_category_id}</p>
-                    </div>
-                    <Badge variant="outline" className="border-warning text-warning">
-                      {item.quantity} left
-                    </Badge>
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                <DataCard title="Revenue Overview">
+                  <div className="h-72 p-4">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={revenueChart}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                        <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                        <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(v) => `${Number(v) / 1000}k`} />
+                        <Tooltip
+                          contentStyle={{
+                            background: "hsl(var(--card))",
+                            border: "1px solid hsl(var(--border))",
+                            borderRadius: 8,
+                          }}
+                          formatter={(v: number) => formatCurrency(v)}
+                        />
+                        <Bar dataKey="value" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
                   </div>
-                ))}
+                </DataCard>
+
+                <DataCard title="Low Stock Alerts">
+                  <div className="divide-y">
+                    {stats.low_stock_items.length === 0 && (
+                      <p className="p-5 text-sm text-muted-foreground">All items are well stocked ✅</p>
+                    )}
+                    {stats.low_stock_items.map((item) => (
+                      <div key={item.id} className="flex items-center gap-3 p-4">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10 text-warning">
+                          <AlertTriangle className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold">{item.name}</p>
+                          <p className="text-xs text-muted-foreground">Category ID: {item.stock_category_id}</p>
+                        </div>
+                        <Badge variant="outline" className="border-warning text-warning">
+                          {item.quantity} left
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </DataCard>
               </div>
-            </DataCard>
-          </div>
+            </>
+          )}
 
           <DataCard title="Recent Service Activity">
             <div className="divide-y">

@@ -51,6 +51,7 @@ const toUiUser = (u: AdminUser): UiUser => ({
 
 export default function Users() {
   const { token, user: currentUser } = useAuth();
+  const canManageUsers = currentUser?.role === "super_admin";
   const [list, setList] = useState<UiUser[]>([]);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -163,57 +164,59 @@ export default function Users() {
         title="Users"
         description="Manage admins, managers, and staff who use the system. New users are created via admin API."
         actions={
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button size="lg" className="bg-gradient-primary text-primary-foreground shadow-md" onClick={openAdd}>
-                <Plus className="mr-2 h-5 w-5" /> Add User
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>{editing ? "Edit User" : "Add New User"}</DialogTitle></DialogHeader>
-              <form className="space-y-4" onSubmit={handleSave}>
-                <div className="space-y-2"><Label>Full Name *</Label><Input name="name" required defaultValue={editing?.name} placeholder="e.g. David Mushi" /></div>
-                <div className="space-y-2"><Label>Email *</Label><Input name="email" required type="email" defaultValue={editing?.email} placeholder="user@garage.co.tz" /></div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label>Role *</Label>
-                    <Select value={role} onValueChange={(v) => setRole(v as UiUser["role"])}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Admin">Admin</SelectItem>
-                        <SelectItem value="Staff">Staff</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Status</Label>
-                    <div className="flex items-center gap-2 pt-2">
-                      <Switch checked={active} onCheckedChange={setActive} />
-                      <span className="text-sm">{active ? "Active" : "Inactive"}</span>
+          canManageUsers ? (
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger asChild>
+                <Button size="lg" className="bg-gradient-primary text-primary-foreground shadow-md" onClick={openAdd}>
+                  <Plus className="mr-2 h-5 w-5" /> Add User
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>{editing ? "Edit User" : "Add New User"}</DialogTitle></DialogHeader>
+                <form className="space-y-4" onSubmit={handleSave}>
+                  <div className="space-y-2"><Label>Full Name *</Label><Input name="name" required defaultValue={editing?.name} placeholder="e.g. David Mushi" /></div>
+                  <div className="space-y-2"><Label>Email *</Label><Input name="email" required type="email" defaultValue={editing?.email} placeholder="user@garage.co.tz" /></div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Role *</Label>
+                      <Select value={role} onValueChange={(v) => setRole(v as UiUser["role"])}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Admin">Admin</SelectItem>
+                          <SelectItem value="Staff">Staff</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Status</Label>
+                      <div className="flex items-center gap-2 pt-2">
+                        <Switch checked={active} onCheckedChange={setActive} />
+                        <span className="text-sm">{active ? "Active" : "Inactive"}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-                {!editing && (
-                  <div className="space-y-2">
-                    <Label>Password *</Label>
-                    <Input name="password" type="password" minLength={8} required placeholder="At least 8 characters" />
-                  </div>
-                )}
-                {editing && (
-                  <div className="space-y-2">
-                    <Label>New Password (optional)</Label>
-                    <Input name="password" type="password" minLength={8} placeholder="Leave empty to keep current password" />
-                  </div>
-                )}
-                <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={submitting}>Cancel</Button>
-                  <Button type="submit" className="bg-gradient-primary" disabled={submitting}>
-                    {editing ? "Update User" : submitting ? "Saving..." : "Save User"}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+                  {!editing && (
+                    <div className="space-y-2">
+                      <Label>Password *</Label>
+                      <Input name="password" type="password" minLength={8} required placeholder="At least 8 characters" />
+                    </div>
+                  )}
+                  {editing && (
+                    <div className="space-y-2">
+                      <Label>New Password (optional)</Label>
+                      <Input name="password" type="password" minLength={8} placeholder="Leave empty to keep current password" />
+                    </div>
+                  )}
+                  <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={submitting}>Cancel</Button>
+                    <Button type="submit" className="bg-gradient-primary" disabled={submitting}>
+                      {editing ? "Update User" : submitting ? "Saving..." : "Save User"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          ) : null
         }
       />
 
@@ -233,13 +236,13 @@ export default function Users() {
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                {canManageUsers && <TableHead className="text-right">Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={canManageUsers ? 5 : 4} className="py-10 text-center text-muted-foreground">
                     <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading users...</span>
                   </TableCell>
                 </TableRow>
@@ -261,26 +264,28 @@ export default function Users() {
                       {u.active ? "Active" : "Inactive"}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => openEdit(u)}>
-                        <Pencil className="mr-1 h-4 w-4" /> Edit
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        disabled={String(currentUser?.id) === u.id}
-                        onClick={() => void handleDelete(u.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
+                  {canManageUsers && (
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button size="sm" variant="ghost" onClick={() => openEdit(u)}>
+                          <Pencil className="mr-1 h-4 w-4" /> Edit
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          disabled={String(currentUser?.id) === u.id}
+                          onClick={() => void handleDelete(u.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
               {!loading && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={canManageUsers ? 5 : 4} className="py-10 text-center text-muted-foreground">
                     No users found.
                   </TableCell>
                 </TableRow>
