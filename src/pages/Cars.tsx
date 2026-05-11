@@ -111,12 +111,14 @@ export default function Cars() {
       return;
     }
     const f = new FormData(e.currentTarget);
+    const modelYear = String(f.get("model_year") ?? "").trim();
+    const color = String(f.get("color") ?? "").trim();
     const payload = {
       customer_id: customerId,
       plate_number: String(f.get("plate_number")),
       vehicle_type: String(f.get("vehicle_type")),
-      model_year: String(f.get("model_year")),
-      color: String(f.get("color")),
+      ...(modelYear ? { model_year: modelYear } : {}),
+      ...(color ? { color } : {}),
     };
 
     setSubmitting(true);
@@ -197,11 +199,11 @@ export default function Cars() {
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-2"><Label>Plate Number *</Label><Input name="plate_number" required defaultValue={editing?.plate_number} placeholder="T 123 ABC" /></div>
-                  <div className="space-y-2"><Label>Year *</Label><Input name="model_year" required placeholder="2020" defaultValue={editing?.model_year} /></div>
+                  <div className="space-y-2"><Label>Year</Label><Input name="model_year" placeholder="2020" defaultValue={editing?.model_year} /></div>
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-2"><Label>Vehicle Type *</Label><Input name="vehicle_type" required placeholder="Toyota Corolla" defaultValue={editing?.vehicle_type} /></div>
-                  <div className="space-y-2"><Label>Color *</Label><Input name="color" required placeholder="White" defaultValue={editing?.color} /></div>
+                  <div className="space-y-2"><Label>Color</Label><Input name="color" placeholder="White" defaultValue={editing?.color} /></div>
                 </div>
                 <DialogFooter>
                   <Button type="button" variant="outline" disabled={submitting} onClick={() => setOpen(false)}>Cancel</Button>

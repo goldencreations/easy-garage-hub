@@ -26,11 +26,13 @@ import {
   listCustomersRequest,
   listInvoicesRequest,
   listServicesRequest,
+  listStocksRequest,
   updateInvoicePaymentStatusRequest,
   type CarApi,
   type CustomerApi,
   type InvoiceApi,
   type ServiceApi,
+  type StockApi,
 } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatCurrency } from "@/lib/mock-data";
@@ -80,20 +82,26 @@ const loadLogoDataUrl = async () => {
 
 export default function Invoices() {
   const { token, user } = useAuth();
+  type StockItemInput = { stock_id: string; quantity: number };
+
   const [list, setList] = useState<InvoiceApi[]>([]);
   const [customers, setCustomers] = useState<CustomerApi[]>([]);
   const [cars, setCars] = useState<CarApi[]>([]);
   const [services, setServices] = useState<ServiceApi[]>([]);
+  const [stocks, setStocks] = useState<StockApi[]>([]);
   const [query, setQuery] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
   const [carSearch, setCarSearch] = useState("");
   const [serviceSearch, setServiceSearch] = useState("");
+  const [stockSearch, setStockSearch] = useState("");
   const [customerSelectOpen, setCustomerSelectOpen] = useState(false);
   const [carSelectOpen, setCarSelectOpen] = useState(false);
   const [serviceSelectOpen, setServiceSelectOpen] = useState(false);
+  const [stockSelectOpen, setStockSelectOpen] = useState(false);
   const [customerOptions, setCustomerOptions] = useState<CustomerApi[]>([]);
   const [carOptions, setCarOptions] = useState<CarApi[]>([]);
   const [serviceOptions, setServiceOptions] = useState<ServiceApi[]>([]);
+  const [stockOptions, setStockOptions] = useState<StockApi[]>([]);
   const [viewId, setViewId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -104,6 +112,7 @@ export default function Invoices() {
   const [serviceId, setServiceId] = useState("");
   const [paymentStatus, setPaymentStatus] = useState<"unpaid" | "partial" | "paid">("unpaid");
   const [items, setItems] = useState<ItemInput[]>([{ description: "", quantity: 1, unit_price: 0, item_type: "custom" }]);
+  const [stockItems, setStockItems] = useState<StockItemInput[]>([]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -113,19 +122,22 @@ export default function Invoices() {
       }
 
       try {
-        const [invoicesRes, customersRes, carsRes, servicesRes] = await Promise.all([
+        const [invoicesRes, customersRes, carsRes, servicesRes, stocksRes] = await Promise.all([
           listInvoicesRequest(token, { search: query }),
           listCustomersRequest(token),
           listCarsRequest(token),
           listServicesRequest(token),
+          listStocksRequest(token),
         ]);
         setList(invoicesRes.data);
         setCustomers(customersRes.data);
         setCars(carsRes.data);
         setServices(servicesRes.data);
+        setStocks(stocksRes.data);
         setCustomerOptions(customersRes.data);
         setCarOptions(carsRes.data);
         setServiceOptions(servicesRes.data);
+        setStockOptions(stocksRes.data);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Could not load invoices.");
       } finally {
@@ -179,6 +191,19 @@ export default function Invoices() {
     void loadServiceOptions();
   }, [token, serviceSelectOpen, serviceSearch, customerId, carId]);
 
+  useEffect(() => {
+    const loadStockOptions = async () => {
+      if (!token || !stockSelectOpen) return;
+      try {
+        const response = await listStocksRequest(token, { search: stockSearch });
+        setStockOptions(response.data);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not search stock.");
+      }
+    };
+    void loadStockOptions();
+  }, [token, stockSelectOpen, stockSearch]);
+
   const filtered = list;
 
   const viewing = viewId ? list.find((invoice) => String(invoice.id) === viewId) : null;
@@ -188,6 +213,13 @@ export default function Invoices() {
 
   const updateItem = (idx: number, patch: Partial<ItemInput>) =>
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+
+  const addStockRow = () => setStockItems((prev) => [...prev, { stock_id: "", quantity: 1 }]);
+  const updateStockRow = (index: number, key: "stock_id" | "quantity", value: string) =>
+    setStockItems((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, [key]: key === "quantity" ? Number(value) || 0 : value } : item)),
+    );
+  const removeStockRow = (index: number) => setStockItems((prev) => prev.filter((_, i) => i !== index));
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -207,6 +239,32 @@ export default function Invoices() {
         item_type: it.item_type,
       }));
 
+    const validStockItems = stockItems
+      .filter((it) => it.stock_id && it.quantity > 0)
+      .map((it) => ({ stock_id: it.stock_id, quantity: Number(it.quantity) }));
+
+    const stockById = new Map(stocks.map((stock) => [String(stock.id), stock]));
+    const orderedInvoiceItems = [
+      ...validItems.map((it) => ({
+        item_type: it.item_type,
+        description: it.description,
+        quantity: it.quantity,
+        unit_price: it.unit_price,
+      })),
+      ...validStockItems.map((it) => {
+        const stock = stockById.get(String(it.stock_id));
+        return {
+          item_type: "stock" as const,
+          stock_id: it.stock_id,
+          description: stock?.name ?? "",
+          quantity: it.quantity,
+        };
+      }),
+    ].map((item, index) => ({
+      ...item,
+      position: index,
+    }));
+
     setSubmitting(true);
     try {
       const response = await createInvoiceRequest(token, {
@@ -216,7 +274,7 @@ export default function Invoices() {
         car_id: carId,
         ...(serviceId ? { service_id: serviceId } : {}),
         payment_status: paymentStatus,
-        items: validItems,
+        invoice_items: orderedInvoiceItems,
       });
       setList((prev) => [response.data, ...prev]);
       setOpen(false);
@@ -225,6 +283,7 @@ export default function Invoices() {
       setServiceId("");
       setPaymentStatus("unpaid");
       setItems([{ description: "", quantity: 1, unit_price: 0, item_type: "custom" }]);
+      setStockItems([]);
       toast.success("Invoice created");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not create invoice.");
@@ -645,6 +704,51 @@ export default function Invoices() {
                   <Button type="button" variant="outline" size="sm" onClick={() => setItems((prev) => [...prev, { description: "", quantity: 1, unit_price: 0, item_type: "custom" }])}>
                     <Plus className="mr-1 h-4 w-4" /> Add Item
                   </Button>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Stock Items (optional)</Label>
+                    <Button type="button" variant="outline" size="sm" onClick={addStockRow}>
+                      <Plus className="mr-1 h-4 w-4" /> Add Stock
+                    </Button>
+                  </div>
+                  {stockItems.map((it, idx) => (
+                    <div key={`invoice-stock-${idx}`} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr,120px,40px]">
+                      <Select
+                        value={it.stock_id}
+                        onValueChange={(value) => updateStockRow(idx, "stock_id", value)}
+                        open={stockSelectOpen}
+                        onOpenChange={setStockSelectOpen}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Select stock item" /></SelectTrigger>
+                        <SelectContent>
+                          <div className="p-2">
+                            <Input
+                              value={stockSearch}
+                              onChange={(e) => setStockSearch(e.target.value)}
+                              onKeyDown={(e) => e.stopPropagation()}
+                              placeholder="Search stock items"
+                            />
+                          </div>
+                          {stockOptions.map((stock) => (
+                            <SelectItem key={stock.id} value={String(stock.id)}>{stock.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={it.quantity || ""}
+                        onChange={(e) => updateStockRow(idx, "quantity", e.target.value)}
+                        placeholder="Qty"
+                      />
+                      <Button type="button" variant="ghost" size="icon" onClick={() => removeStockRow(idx)}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                  {stocks.length === 0 && <p className="text-xs text-muted-foreground">No stock items available yet.</p>}
                 </div>
 
                 <div className="space-y-2">

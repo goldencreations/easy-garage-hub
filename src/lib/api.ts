@@ -48,8 +48,8 @@ export type CarApi = {
   customer_id: number | string;
   plate_number: string;
   vehicle_type: string;
-  model_year: string;
-  color: string;
+  model_year?: string | null;
+  color?: string | null;
   customer?: CustomerApi;
 };
 
@@ -349,8 +349,8 @@ export function createCarRequest(
     customer_id: string | number;
     plate_number: string;
     vehicle_type: string;
-    model_year: string;
-    color: string;
+    model_year?: string;
+    color?: string;
   },
 ) {
   return apiRequest<CarApi>("/cars", {
@@ -367,8 +367,8 @@ export function updateCarRequest(
     customer_id: string | number;
     plate_number: string;
     vehicle_type: string;
-    model_year: string;
-    color: string;
+    model_year?: string;
+    color?: string;
   },
 ) {
   return apiRequest<CarApi>(`/cars/${carId}`, {
@@ -637,6 +637,15 @@ export function createInvoiceRequest(
     car_id: string | number;
     service_id?: string | number;
     payment_status: "unpaid" | "partial" | "paid";
+    invoice_items?: Array<{
+      item_type: "labor" | "custom" | "stock";
+      description?: string;
+      quantity: number;
+      unit_price?: number;
+      stock_id?: string | number;
+      position: number;
+    }>;
+    stock_items?: Array<{ stock_id: string | number; quantity: number }>;
     items?: Array<{
       description: string;
       quantity: number;
