@@ -51,7 +51,7 @@ export default function Stock() {
   const [editingCategory, setEditingCategory] = useState<StockCategoryApi | null>(null);
   const [restockOpen, setRestockOpen] = useState(false);
   const [restockingItem, setRestockingItem] = useState<StockApi | null>(null);
-  const [restockQty, setRestockQty] = useState("1");
+  const [restockQty, setRestockQty] = useState("");
 
   const filtered = list;
 
@@ -147,7 +147,7 @@ export default function Stock() {
 
   const openRestock = (item: StockApi) => {
     setRestockingItem(item);
-    setRestockQty("1");
+    setRestockQty("");
     setRestockOpen(true);
   };
 
@@ -166,7 +166,7 @@ export default function Stock() {
       toast.success("Stock restocked");
       setRestockOpen(false);
       setRestockingItem(null);
-      setRestockQty("1");
+      setRestockQty("");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not restock item.");
     } finally {

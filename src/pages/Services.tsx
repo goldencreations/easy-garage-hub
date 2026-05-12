@@ -44,7 +44,7 @@ import { formatDate } from "@/lib/date";
 import { toast } from "sonner";
 
 export default function Services() {
-  type StockItemInput = { stock_id: string; quantity: number };
+  type StockItemInput = { stock_id: string; quantity: string };
 
   const { token } = useAuth();
   const [list, setList] = useState<ServiceApi[]>([]);
@@ -242,8 +242,8 @@ export default function Services() {
 
     const f = new FormData(e.currentTarget);
     const validStockItems = stockItems
-      .filter((item) => item.stock_id && item.quantity > 0)
-      .map((item) => ({ stock_id: item.stock_id, quantity: item.quantity }));
+      .map((item) => ({ stock_id: item.stock_id, quantity: Number(item.quantity) }))
+      .filter((item) => item.stock_id && Number.isFinite(item.quantity) && item.quantity > 0);
 
     const payload = {
       date: String(f.get("date")) || new Date().toISOString().slice(0, 10),
@@ -282,7 +282,7 @@ export default function Services() {
     setEditStockItems(
       (service.stocks ?? []).map((stock) => ({
         stock_id: String(stock.id),
-        quantity: Number(stock.pivot?.quantity ?? 1),
+        quantity: String(stock.pivot?.quantity ?? ""),
       })),
     );
     setEditOpen(true);
@@ -307,8 +307,8 @@ export default function Services() {
 
     const f = new FormData(e.currentTarget);
     const validStockItems = editStockItems
-      .filter((item) => item.stock_id && item.quantity > 0)
-      .map((item) => ({ stock_id: item.stock_id, quantity: item.quantity }));
+      .map((item) => ({ stock_id: item.stock_id, quantity: Number(item.quantity) }))
+      .filter((item) => item.stock_id && Number.isFinite(item.quantity) && item.quantity > 0);
 
     setSubmitting(true);
     try {
@@ -337,15 +337,15 @@ export default function Services() {
 
   const addStockRow = (forEdit = false) => {
     if (forEdit) {
-      setEditStockItems((prev) => [...prev, { stock_id: "", quantity: 1 }]);
+      setEditStockItems((prev) => [...prev, { stock_id: "", quantity: "" }]);
       return;
     }
-    setStockItems((prev) => [...prev, { stock_id: "", quantity: 1 }]);
+    setStockItems((prev) => [...prev, { stock_id: "", quantity: "" }]);
   };
 
   const updateStockRow = (index: number, key: "stock_id" | "quantity", value: string, forEdit = false) => {
     const updater = (prev: StockItemInput[]) =>
-      prev.map((item, i) => (i === index ? { ...item, [key]: key === "quantity" ? Number(value) || 0 : value } : item));
+      prev.map((item, i) => (i === index ? { ...item, [key]: value } : item));
 
     if (forEdit) {
       setEditStockItems(updater);
@@ -512,7 +512,7 @@ export default function Services() {
                         <Input
                           type="number"
                           min="1"
-                          value={item.quantity || ""}
+                          value={item.quantity}
                           onChange={(e) => updateStockRow(index, "quantity", e.target.value, false)}
                           placeholder="Qty"
                         />
@@ -629,7 +629,7 @@ export default function Services() {
                     <Input
                       type="number"
                       min="1"
-                      value={item.quantity || ""}
+                      value={item.quantity}
                       onChange={(e) => updateStockRow(index, "quantity", e.target.value, true)}
                       placeholder="Qty"
                     />

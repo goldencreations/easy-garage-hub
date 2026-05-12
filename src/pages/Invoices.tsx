@@ -39,7 +39,7 @@ import { formatCurrency } from "@/lib/mock-data";
 import { formatDate } from "@/lib/date";
 import { toast } from "sonner";
 
-type ItemInput = { description: string; quantity: number; unit_price: number; item_type: "labor" | "custom" };
+type ItemInput = { description: string; quantity: string; unit_price: string; item_type: "labor" | "custom" };
 const GARAGE_NAME = "AZIZI AUTOMOTIVE GARAGE";
 const GARAGE_PHONE = "+255677401259";
 const GARAGE_EMAIL = "aziziautomotivegarage1@gmail.com";
@@ -82,7 +82,7 @@ const loadLogoDataUrl = async () => {
 
 export default function Invoices() {
   const { token, user } = useAuth();
-  type StockItemInput = { stock_id: string; quantity: number };
+  type StockItemInput = { stock_id: string; quantity: string };
 
   const [list, setList] = useState<InvoiceApi[]>([]);
   const [customers, setCustomers] = useState<CustomerApi[]>([]);
@@ -111,7 +111,7 @@ export default function Invoices() {
   const [carId, setCarId] = useState("");
   const [serviceId, setServiceId] = useState("");
   const [paymentStatus, setPaymentStatus] = useState<"unpaid" | "partial" | "paid">("unpaid");
-  const [items, setItems] = useState<ItemInput[]>([{ description: "", quantity: 1, unit_price: 0, item_type: "custom" }]);
+  const [items, setItems] = useState<ItemInput[]>([{ description: "", quantity: "", unit_price: "", item_type: "custom" }]);
   const [stockItems, setStockItems] = useState<StockItemInput[]>([]);
 
   useEffect(() => {
@@ -214,10 +214,10 @@ export default function Invoices() {
   const updateItem = (idx: number, patch: Partial<ItemInput>) =>
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
 
-  const addStockRow = () => setStockItems((prev) => [...prev, { stock_id: "", quantity: 1 }]);
+  const addStockRow = () => setStockItems((prev) => [...prev, { stock_id: "", quantity: "" }]);
   const updateStockRow = (index: number, key: "stock_id" | "quantity", value: string) =>
     setStockItems((prev) =>
-      prev.map((item, i) => (i === index ? { ...item, [key]: key === "quantity" ? Number(value) || 0 : value } : item)),
+      prev.map((item, i) => (i === index ? { ...item, [key]: value } : item)),
     );
   const removeStockRow = (index: number) => setStockItems((prev) => prev.filter((_, i) => i !== index));
 
@@ -232,25 +232,27 @@ export default function Invoices() {
     const invoiceNumber = `INV-${new Date().getFullYear()}-${String(list.length + 1).padStart(4, "0")}`;
     const validItems = items
       .filter((it) => it.description.trim())
-      .map((it) => ({
-        description: it.description.trim(),
-        quantity: Number(it.quantity),
-        unit_price: Number(it.unit_price),
-        item_type: it.item_type,
-      }));
+      .map((it) => {
+        const quantity = Number(it.quantity);
+        const unitPrice = Number(it.unit_price);
+        return {
+          description: it.description.trim(),
+          quantity,
+          unit_price: unitPrice,
+          item_type: it.item_type,
+        };
+      })
+      .filter((it) => Number.isFinite(it.quantity) && it.quantity > 0 && Number.isFinite(it.unit_price) && it.unit_price >= 0);
 
     const validStockItems = stockItems
-      .filter((it) => it.stock_id && it.quantity > 0)
-      .map((it) => ({ stock_id: it.stock_id, quantity: Number(it.quantity) }));
+      .map((it) => ({
+        stock_id: it.stock_id,
+        quantity: Number(it.quantity),
+      }))
+      .filter((it) => it.stock_id && Number.isFinite(it.quantity) && it.quantity > 0);
 
     const stockById = new Map(stocks.map((stock) => [String(stock.id), stock]));
     const orderedInvoiceItems = [
-      ...validItems.map((it) => ({
-        item_type: it.item_type,
-        description: it.description,
-        quantity: it.quantity,
-        unit_price: it.unit_price,
-      })),
       ...validStockItems.map((it) => {
         const stock = stockById.get(String(it.stock_id));
         return {
@@ -260,9 +262,15 @@ export default function Invoices() {
           quantity: it.quantity,
         };
       }),
+      ...validItems.map((it) => ({
+        item_type: it.item_type,
+        description: it.description,
+        quantity: it.quantity,
+        unit_price: it.unit_price,
+      })),
     ].map((item, index) => ({
       ...item,
-      position: index,
+      position: index + 1,
     }));
 
     setSubmitting(true);
@@ -282,7 +290,7 @@ export default function Invoices() {
       setCarId("");
       setServiceId("");
       setPaymentStatus("unpaid");
-      setItems([{ description: "", quantity: 1, unit_price: 0, item_type: "custom" }]);
+      setItems([{ description: "", quantity: "", unit_price: "", item_type: "custom" }]);
       setStockItems([]);
       toast.success("Invoice created");
     } catch (error) {
@@ -662,51 +670,6 @@ export default function Invoices() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Custom/Labor Items (optional)</Label>
-                  <div className="space-y-2">
-                    {items.map((it, idx) => (
-                      <div key={idx} className="grid grid-cols-1 gap-2 sm:grid-cols-12 sm:items-center">
-                        <Input
-                          className="sm:col-span-6"
-                          placeholder="Description"
-                          value={it.description}
-                          onChange={(e) => updateItem(idx, { description: e.target.value })}
-                        />
-                        <Input
-                          className="sm:col-span-2"
-                          type="number"
-                          min={1}
-                          placeholder="Qty"
-                          value={it.quantity}
-                          onChange={(e) => updateItem(idx, { quantity: Number(e.target.value) || 1 })}
-                        />
-                        <Input
-                          className="sm:col-span-2"
-                          type="number"
-                          min={0}
-                          placeholder="Unit Price"
-                          value={it.unit_price}
-                          onChange={(e) => updateItem(idx, { unit_price: Number(e.target.value) || 0 })}
-                        />
-                        <Select value={it.item_type} onValueChange={(v) => updateItem(idx, { item_type: v as "labor" | "custom" })}>
-                          <SelectTrigger className="sm:col-span-1"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="custom">Custom</SelectItem>
-                            <SelectItem value="labor">Labor</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Button type="button" variant="ghost" size="icon" className="sm:col-span-1" onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                  <Button type="button" variant="outline" size="sm" onClick={() => setItems((prev) => [...prev, { description: "", quantity: 1, unit_price: 0, item_type: "custom" }])}>
-                    <Plus className="mr-1 h-4 w-4" /> Add Item
-                  </Button>
-                </div>
-
-                <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label>Stock Items (optional)</Label>
                     <Button type="button" variant="outline" size="sm" onClick={addStockRow}>
@@ -739,7 +702,7 @@ export default function Invoices() {
                       <Input
                         type="number"
                         min="1"
-                        value={it.quantity || ""}
+                        value={it.quantity}
                         onChange={(e) => updateStockRow(idx, "quantity", e.target.value)}
                         placeholder="Qty"
                       />
@@ -749,6 +712,51 @@ export default function Invoices() {
                     </div>
                   ))}
                   {stocks.length === 0 && <p className="text-xs text-muted-foreground">No stock items available yet.</p>}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Custom/Labor Items (optional)</Label>
+                  <div className="space-y-2">
+                    {items.map((it, idx) => (
+                      <div key={idx} className="grid grid-cols-1 gap-2 sm:grid-cols-12 sm:items-center">
+                        <Input
+                          className="sm:col-span-6"
+                          placeholder="Description"
+                          value={it.description}
+                          onChange={(e) => updateItem(idx, { description: e.target.value })}
+                        />
+                        <Input
+                          className="sm:col-span-2"
+                          type="number"
+                          min={1}
+                          placeholder="Qty"
+                          value={it.quantity}
+                          onChange={(e) => updateItem(idx, { quantity: e.target.value })}
+                        />
+                        <Input
+                          className="sm:col-span-2"
+                          type="number"
+                          min={0}
+                          placeholder="Unit Price"
+                          value={it.unit_price}
+                          onChange={(e) => updateItem(idx, { unit_price: e.target.value })}
+                        />
+                        <Select value={it.item_type} onValueChange={(v) => updateItem(idx, { item_type: v as "labor" | "custom" })}>
+                          <SelectTrigger className="sm:col-span-1"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="custom">Custom</SelectItem>
+                            <SelectItem value="labor">Labor</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button type="button" variant="ghost" size="icon" className="sm:col-span-1" onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setItems((prev) => [...prev, { description: "", quantity: "", unit_price: "", item_type: "custom" }])}>
+                    <Plus className="mr-1 h-4 w-4" /> Add Item
+                  </Button>
                 </div>
 
                 <div className="space-y-2">

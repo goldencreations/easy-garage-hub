@@ -216,7 +216,7 @@ export default function CreditPurchases() {
                       type="number"
                       min="0"
                       step="0.01"
-                      defaultValue={editing?.amount_paid ?? 0}
+                      defaultValue={editing?.amount_paid ?? ""}
                       placeholder="0"
                     />
                   </div>
