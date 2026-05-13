@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -24,6 +24,7 @@ import {
   createExpenseRequest,
   deleteExpenseRequest,
   listExpensesRequest,
+  openingBalanceSuggestionRequest,
   updateExpenseRequest,
   type ExpenseApi,
 } from "@/lib/api";
@@ -97,6 +98,31 @@ export default function Expenses() {
     setOpen(true);
   };
 
+  const applyOpeningBalanceSuggestion = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!token) return;
+    const form = (e.currentTarget as HTMLButtonElement).closest("form");
+    const dateInput = form?.querySelector<HTMLInputElement>('input[name="date"]');
+    const date = dateInput?.value?.trim();
+    if (!date) {
+      toast.error("Pick an expense date first.");
+      return;
+    }
+    try {
+      const res = await openingBalanceSuggestionRequest(token, date);
+      const suggested = res.data.suggested_balance_bd;
+      if (suggested == null || suggested === "") {
+        toast.info("No prior balance C/D found before this date.");
+        return;
+      }
+      const bdInput = form?.querySelector<HTMLInputElement>('input[name="balance_bd"]');
+      if (bdInput) bdInput.value = suggested;
+      toast.success("Balance B/D filled from last balance C/D.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not load suggestion.");
+    }
+  };
+
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!token) return;
@@ -113,12 +139,27 @@ export default function Expenses() {
       return;
     }
 
+    const balanceBdRaw = String(form.get("balance_bd") ?? "").replace(/,/g, "").trim();
+    const balanceCdRaw = String(form.get("balance_cd") ?? "").replace(/,/g, "").trim();
+    const balance_bd = balanceBdRaw === "" ? undefined : Number(balanceBdRaw);
+    const balance_cd = balanceCdRaw === "" ? undefined : Number(balanceCdRaw);
+    if (balance_bd !== undefined && !Number.isFinite(balance_bd)) {
+      toast.error("Balance B/D must be a valid number.");
+      return;
+    }
+    if (balance_cd !== undefined && !Number.isFinite(balance_cd)) {
+      toast.error("Balance C/D must be a valid number.");
+      return;
+    }
+
     const payload = {
       title: String(form.get("title")),
       category,
       amount,
       date: String(form.get("date")) || new Date().toISOString().slice(0, 10),
       description: String(form.get("description") ?? ""),
+      ...(balance_bd !== undefined ? { balance_bd } : {}),
+      ...(balance_cd !== undefined ? { balance_cd } : {}),
     };
 
     setSubmitting(true);
@@ -168,12 +209,19 @@ export default function Expenses() {
         title="Expenses"
         description="Record and track all garage expenses."
         actions={
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button size="lg" className="bg-gradient-primary text-primary-foreground shadow-md" onClick={openAdd}>
-                <Plus className="mr-2 h-5 w-5" /> Add Expense
-              </Button>
-            </DialogTrigger>
+          <Dialog
+            open={open}
+            onOpenChange={(next) => {
+              setOpen(next);
+              if (!next) {
+                setEditing(null);
+                setCategory("");
+              }
+            }}
+          >
+            <Button size="lg" className="bg-gradient-primary text-primary-foreground shadow-md" onClick={() => openAdd()}>
+              <Plus className="mr-2 h-5 w-5" /> Add Expense
+            </Button>
             <DialogContent>
               <DialogHeader><DialogTitle>{editing ? "Update Expense" : "Record New Expense"}</DialogTitle></DialogHeader>
               <form className="space-y-4" onSubmit={handleSave}>
@@ -202,7 +250,37 @@ export default function Expenses() {
                     />
                   </div>
                 </div>
-                <div className="space-y-2"><Label>Date</Label><Input name="date" type="date" defaultValue={editing?.date ?? new Date().toISOString().slice(0, 10)} /></div>
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-end justify-between gap-2">
+                    <Label>Date</Label>
+                    <Button type="button" variant="outline" size="sm" onClick={applyOpeningBalanceSuggestion}>
+                      Suggest Balance B/D
+                    </Button>
+                  </div>
+                  <Input name="date" type="date" defaultValue={editing?.date ?? new Date().toISOString().slice(0, 10)} />
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Balance B/D (brought down)</Label>
+                    <Input
+                      name="balance_bd"
+                      type="text"
+                      inputMode="decimal"
+                      defaultValue={editing?.balance_bd != null && editing.balance_bd !== "" ? String(editing.balance_bd) : ""}
+                      placeholder="Optional"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Balance C/D (carried down)</Label>
+                    <Input
+                      name="balance_cd"
+                      type="text"
+                      inputMode="decimal"
+                      defaultValue={editing?.balance_cd != null && editing.balance_cd !== "" ? String(editing.balance_cd) : ""}
+                      placeholder="Optional"
+                    />
+                  </div>
+                </div>
                 <div className="space-y-2"><Label>Description</Label><Textarea name="description" defaultValue={editing?.description ?? ""} placeholder="Optional notes" /></div>
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={submitting}>Cancel</Button>
@@ -239,13 +317,15 @@ export default function Expenses() {
                 <TableHead className="hidden sm:table-cell">Category</TableHead>
                 <TableHead className="hidden md:table-cell">Description</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
+                <TableHead className="hidden lg:table-cell text-right">Bal. B/D</TableHead>
+                <TableHead className="hidden lg:table-cell text-right">Bal. C/D</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
                     <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading expenses...</span>
                   </TableCell>
                 </TableRow>
@@ -257,6 +337,12 @@ export default function Expenses() {
                   <TableCell className="hidden sm:table-cell"><Badge variant="secondary">{CATEGORIES.find((cat) => cat.value === expense.category)?.label ?? expense.category}</Badge></TableCell>
                   <TableCell className="hidden md:table-cell text-muted-foreground">{expense.description}</TableCell>
                   <TableCell className="text-right font-bold">{formatCurrency(expense.amount)}</TableCell>
+                  <TableCell className="hidden lg:table-cell text-right text-muted-foreground">
+                    {expense.balance_bd != null && expense.balance_bd !== "" ? formatCurrency(expense.balance_bd) : "—"}
+                  </TableCell>
+                  <TableCell className="hidden lg:table-cell text-right text-muted-foreground">
+                    {expense.balance_cd != null && expense.balance_cd !== "" ? formatCurrency(expense.balance_cd) : "—"}
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="hidden flex-wrap justify-end gap-1 sm:flex">
                       <Button size="sm" variant="ghost" onClick={() => openEdit(expense)}>
@@ -285,7 +371,7 @@ export default function Expenses() {
               ))}
               {!loading && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
                     No expenses found.
                   </TableCell>
                 </TableRow>
