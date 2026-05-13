@@ -101,6 +101,17 @@ export type InvoiceItemApi = {
   unit_price: number | string;
   line_total: number | string;
   item_type?: "stock" | "labor" | "custom";
+  stock_id?: number | string | null;
+  service_id?: number | string | null;
+  position?: number;
+};
+
+export type InvoicePaymentApi = {
+  id: number | string;
+  invoice_id?: number | string;
+  amount: number | string;
+  paid_at?: string;
+  note?: string | null;
 };
 
 export type InvoiceApi = {
@@ -113,6 +124,11 @@ export type InvoiceApi = {
   payment_status: "unpaid" | "partial" | "paid";
   total: number | string;
   items: InvoiceItemApi[];
+  /** Sum of recorded payments (from API). */
+  amount_paid?: number | string;
+  /** Remaining balance (from API). */
+  amount_due?: number | string;
+  payments?: InvoicePaymentApi[];
   customer?: CustomerApi;
   car?: CarApi;
   service?: ServiceApi;
@@ -155,6 +171,10 @@ export type ExpenseApi = {
   title: string;
   description?: string | null;
   amount: number;
+  /** Balance brought down */
+  balance_bd?: number | string | null;
+  /** Balance carried down */
+  balance_cd?: number | string | null;
 };
 
 export type CreditPurchasePaymentStatus = "unpaid" | "partial" | "paid";
@@ -628,6 +648,17 @@ export function listInvoicesRequest(
   });
 }
 
+export type InvoiceItemPayload = {
+  item_type: "labor" | "custom" | "stock";
+  description?: string;
+  /** Numeric string (e.g. "2") or label such as "SET" per API. */
+  quantity: string | number;
+  unit_price?: number;
+  line_total?: number;
+  stock_id?: string | number;
+  position?: number;
+};
+
 export function createInvoiceRequest(
   token: string,
   payload: {
@@ -637,24 +668,65 @@ export function createInvoiceRequest(
     car_id: string | number;
     service_id?: string | number;
     payment_status: "unpaid" | "partial" | "paid";
-    invoice_items?: Array<{
-      item_type: "labor" | "custom" | "stock";
-      description?: string;
-      quantity: number;
-      unit_price?: number;
-      stock_id?: string | number;
-      position: number;
-    }>;
+    invoice_items?: InvoiceItemPayload[];
     stock_items?: Array<{ stock_id: string | number; quantity: number }>;
     items?: Array<{
       description: string;
-      quantity: number;
+      quantity: string | number;
       unit_price: number;
       item_type?: "labor" | "custom";
+      line_total?: number;
     }>;
   },
 ) {
   return apiRequest<InvoiceApi>("/invoices", {
+    method: "POST",
+    token,
+    body: payload,
+  });
+}
+
+export function getInvoiceRequest(token: string, invoiceId: string | number) {
+  return apiRequest<InvoiceApi>(`/invoices/${invoiceId}`, {
+    method: "GET",
+    token,
+  });
+}
+
+export function updateInvoiceRequest(
+  token: string,
+  invoiceId: string | number,
+  payload: {
+    invoice_number?: string;
+    date?: string;
+    customer_id?: string | number;
+    car_id?: string | number;
+    service_id?: string | number | null;
+    payment_status?: "unpaid" | "partial" | "paid";
+    invoice_items?: InvoiceItemPayload[];
+    stock_items?: Array<{ stock_id: string | number; quantity: number }>;
+    items?: Array<{
+      description: string;
+      quantity: string | number;
+      unit_price: number;
+      item_type?: "labor" | "custom";
+      line_total?: number;
+    }>;
+  },
+) {
+  return apiRequest<InvoiceApi>(`/invoices/${invoiceId}`, {
+    method: "PUT",
+    token,
+    body: payload,
+  });
+}
+
+export function recordInvoicePaymentRequest(
+  token: string,
+  invoiceId: string | number,
+  payload: { amount: number; paid_at?: string; note?: string },
+) {
+  return apiRequest<InvoiceApi>(`/invoices/${invoiceId}/payments`, {
     method: "POST",
     token,
     body: payload,
@@ -698,6 +770,8 @@ export function createExpenseRequest(
     title: string;
     description?: string;
     amount: number;
+    balance_bd?: number;
+    balance_cd?: number;
   },
 ) {
   return apiRequest<ExpenseApi>("/expenses", {
@@ -716,6 +790,8 @@ export function updateExpenseRequest(
     title: string;
     description?: string;
     amount: number;
+    balance_bd?: number;
+    balance_cd?: number;
   },
 ) {
   return apiRequest<ExpenseApi>(`/expenses/${expenseId}`, {
@@ -728,6 +804,18 @@ export function updateExpenseRequest(
 export function deleteExpenseRequest(token: string, expenseId: string | number) {
   return apiRequest<[] | Record<string, never>>(`/expenses/${expenseId}`, {
     method: "DELETE",
+    token,
+  });
+}
+
+export function openingBalanceSuggestionRequest(token: string, date: string) {
+  const query = new URLSearchParams({ date });
+  return apiRequest<{
+    suggested_balance_bd: string | null;
+    from_expense_id?: number | string | null;
+    from_date?: string | null;
+  }>(`/expenses/opening-balance-suggestion?${query.toString()}`, {
+    method: "GET",
     token,
   });
 }
