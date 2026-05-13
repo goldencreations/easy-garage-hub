@@ -734,6 +734,19 @@ export function recordInvoicePaymentRequest(
   });
 }
 
+export function updateInvoicePaymentRequest(
+  token: string,
+  invoiceId: string | number,
+  paymentId: string | number,
+  payload: { amount?: number; paid_at?: string | null; note?: string | null },
+) {
+  return apiRequest<InvoiceApi>(`/invoices/${invoiceId}/payments/${paymentId}`, {
+    method: "PATCH",
+    token,
+    body: payload,
+  });
+}
+
 export function updateInvoicePaymentStatusRequest(
   token: string,
   invoiceId: string | number,

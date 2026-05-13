@@ -29,11 +29,13 @@ import {
   listServicesRequest,
   listStocksRequest,
   recordInvoicePaymentRequest,
+  updateInvoicePaymentRequest,
   updateInvoiceRequest,
   updateInvoicePaymentStatusRequest,
   type CarApi,
   type CustomerApi,
   type InvoiceApi,
+  type InvoicePaymentApi,
   type InvoiceItemApi,
   type InvoiceItemPayload,
   type ServiceApi,
@@ -238,6 +240,11 @@ export default function Invoices() {
   const [paymentPaidAt, setPaymentPaidAt] = useState(() => new Date().toISOString().slice(0, 10));
   const [paymentNote, setPaymentNote] = useState("");
   const [recordingPayment, setRecordingPayment] = useState(false);
+  const [paymentEdit, setPaymentEdit] = useState<InvoicePaymentApi | null>(null);
+  const [editPayAmount, setEditPayAmount] = useState("");
+  const [editPayPaidAt, setEditPayPaidAt] = useState("");
+  const [editPayNote, setEditPayNote] = useState("");
+  const [updatingPayment, setUpdatingPayment] = useState(false);
 
   const resetInvoiceForm = () => {
     setEditingInvoiceId(null);
@@ -503,6 +510,39 @@ export default function Invoices() {
       toast.error(e instanceof Error ? e.message : "Could not record payment.");
     } finally {
       setRecordingPayment(false);
+    }
+  };
+
+  const openPaymentEditor = (p: InvoicePaymentApi) => {
+    setPaymentEdit(p);
+    setEditPayAmount(String(p.amount ?? ""));
+    const raw = p.paid_at != null && p.paid_at !== "" ? String(p.paid_at) : "";
+    setEditPayPaidAt(raw.length >= 10 ? raw.slice(0, 10) : "");
+    setEditPayNote(p.note ?? "");
+  };
+
+  const handleSavePaymentEdit = async () => {
+    if (!token || !viewing || !paymentEdit) return;
+    const amt = Number(editPayAmount.replace(/,/g, ".").trim());
+    if (!Number.isFinite(amt) || amt < 0.01) {
+      toast.error("Enter a valid payment amount (minimum 0.01).");
+      return;
+    }
+    setUpdatingPayment(true);
+    try {
+      const res = await updateInvoicePaymentRequest(token, viewing.id, paymentEdit.id, {
+        amount: amt,
+        paid_at: editPayPaidAt.trim() === "" ? null : editPayPaidAt.trim(),
+        note: editPayNote.trim() === "" ? null : editPayNote.trim(),
+      });
+      setList((prev) => prev.map((inv) => (String(inv.id) === String(viewing.id) ? res.data : inv)));
+      setViewingDetail(res.data);
+      setPaymentEdit(null);
+      toast.success("Payment updated");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not update payment.");
+    } finally {
+      setUpdatingPayment(false);
     }
   };
 
@@ -1021,7 +1061,7 @@ export default function Invoices() {
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
-                      Amount paid and amount due are driven by recorded payments on the invoice. Use the invoice view to add payments; use status here or in the list when you need the label to match reality.
+                      Amount paid and amount due follow recorded payments. Open the invoice view to add payments or edit an existing payment row; use status here or in the list when you need the label to match reality.
                     </p>
                   </div>
 
@@ -1189,7 +1229,7 @@ export default function Invoices() {
               <div className="space-y-2 rounded-md border p-3">
                 <Label className="text-sm font-semibold">Update payment status</Label>
                 <p className="text-xs text-muted-foreground">
-                  Updates the status label on the server. Amount paid and amount due follow the payment entries listed below—use Record payment to add an installment and refresh those totals. Individual payment rows cannot be edited through the current API.
+                  Updates the status label on the server. Amount paid and amount due follow the payment entries below—use Record payment to add installments, or Edit on a row to change an existing payment.
                 </p>
                 <Select
                   value={viewing.payment_status}
@@ -1226,14 +1266,19 @@ export default function Invoices() {
               </div>
 
               {viewing.payments && viewing.payments.length > 0 && (
-                <div className="space-y-1">
+                <div className="space-y-2">
                   <p className="text-sm font-medium">Payments</p>
-                  <ul className="max-h-40 space-y-1 overflow-y-auto text-sm">
+                  <ul className="max-h-48 space-y-2 overflow-y-auto text-sm">
                     {viewing.payments.map((p) => (
-                      <li key={p.id} className="flex justify-between gap-2 rounded bg-muted/50 px-2 py-1">
-                        <span>{p.paid_at ? formatDate(String(p.paid_at)) : "—"}</span>
-                        <span className="font-mono font-medium">{formatCurrency(p.amount)}</span>
-                        <span className="truncate text-muted-foreground">{p.note ?? "—"}</span>
+                      <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2">
+                        <div className="flex min-w-0 flex-1 flex-wrap gap-x-3 gap-y-1">
+                          <span className="text-muted-foreground">{p.paid_at ? formatDate(String(p.paid_at)) : "—"}</span>
+                          <span className="font-mono font-semibold">{formatCurrency(p.amount)}</span>
+                          <span className="truncate text-muted-foreground">{p.note ?? "—"}</span>
+                        </div>
+                        <Button type="button" variant="outline" size="sm" onClick={() => openPaymentEditor(p)}>
+                          Edit
+                        </Button>
                       </li>
                     ))}
                   </ul>
@@ -1271,6 +1316,49 @@ export default function Invoices() {
                   <Download className="mr-2 h-4 w-4" /> Download PDF
                 </Button>
               </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!paymentEdit}
+        onOpenChange={(open) => {
+          if (!open) setPaymentEdit(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit payment</DialogTitle>
+          </DialogHeader>
+          {paymentEdit && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Amount</Label>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={editPayAmount}
+                  onChange={(e) => setEditPayAmount(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Paid on</Label>
+                <Input type="date" value={editPayPaidAt} onChange={(e) => setEditPayPaidAt(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Note</Label>
+                <Input value={editPayNote} onChange={(e) => setEditPayNote(e.target.value)} placeholder="Optional" />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setPaymentEdit(null)} disabled={updatingPayment}>
+                  Cancel
+                </Button>
+                <Button type="button" className="bg-gradient-primary" disabled={updatingPayment} onClick={() => void handleSavePaymentEdit()}>
+                  {updatingPayment ? "Saving…" : "Save changes"}
+                </Button>
+              </DialogFooter>
             </div>
           )}
         </DialogContent>
