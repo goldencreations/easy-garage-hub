@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Download, Eye, Loader2, Plus, Trash2, MoreHorizontal } from "lucide-react";
+import { Download, Eye, Loader2, Plus, Trash2, MoreHorizontal, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataCard } from "@/components/DataCard";
 import { SearchBar } from "@/components/SearchBar";
@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -22,15 +22,20 @@ import { jsPDF } from "jspdf";
 import {
   createInvoiceRequest,
   deleteInvoiceRequest,
+  getInvoiceRequest,
   listCarsRequest,
   listCustomersRequest,
   listInvoicesRequest,
   listServicesRequest,
   listStocksRequest,
+  recordInvoicePaymentRequest,
+  updateInvoiceRequest,
   updateInvoicePaymentStatusRequest,
   type CarApi,
   type CustomerApi,
   type InvoiceApi,
+  type InvoiceItemApi,
+  type InvoiceItemPayload,
   type ServiceApi,
   type StockApi,
 } from "@/lib/api";
@@ -39,7 +44,6 @@ import { formatCurrency } from "@/lib/mock-data";
 import { formatDate } from "@/lib/date";
 import { toast } from "sonner";
 
-type ItemInput = { description: string; quantity: string; unit_price: string; item_type: "labor" | "custom" };
 const GARAGE_NAME = "AZIZI AUTOMOTIVE GARAGE";
 const GARAGE_PHONE = "+255677401259";
 const GARAGE_EMAIL = "aziziautomotivegarage1@gmail.com";
@@ -50,14 +54,128 @@ const PAYMENT_ACCOUNT_NAME = "A/C NAME: AZIZI AUTOMOTIVE GARAGE";
 
 let logoDataUrlPromise: Promise<string | null> | null = null;
 
+type DraftLineStock = { kind: "stock"; stock_id: string; quantity: string; line_total: string };
+type DraftLineCustom = {
+  kind: "custom";
+  item_type: "labor" | "custom";
+  description: string;
+  quantity: string;
+  unit_price: string;
+  line_total: string;
+};
+type DraftLine = DraftLineStock | DraftLineCustom;
+
+const emptyCustomLine = (): DraftLineCustom => ({
+  kind: "custom",
+  item_type: "custom",
+  description: "",
+  quantity: "",
+  unit_price: "",
+  line_total: "",
+});
+
+const emptyStockLine = (): DraftLineStock => ({
+  kind: "stock",
+  stock_id: "",
+  quantity: "",
+  line_total: "",
+});
+
 const formatTzs = (value: number) => new Intl.NumberFormat("en-US").format(Math.max(0, Number(value) || 0));
 const formatInvoiceDateLong = (value: string | Date) =>
   new Date(value).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 
-const resolvePaidAmount = (status: InvoiceApi["payment_status"], total: number) => {
-  if (status === "paid") return total;
+function parseOptionalAmount(s: string): number | undefined {
+  const t = s.trim().replace(/,/g, ".");
+  if (t === "") return undefined;
+  const n = Number(t);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
+/** API allows positive numbers or non-numeric labels like SET. */
+function quantityIsAllowed(raw: string): boolean {
+  const t = raw.trim();
+  if (!t) return false;
+  const norm = t.replace(/,/g, ".");
+  if (!Number.isNaN(Number(norm)) && Number.isFinite(Number(norm))) {
+    return Number(norm) > 0;
+  }
+  return t.length <= 64;
+}
+
+function invoiceAmountPaid(invoice: InvoiceApi): number {
+  if (invoice.amount_paid !== undefined && invoice.amount_paid !== null && String(invoice.amount_paid) !== "") {
+    return Number(invoice.amount_paid) || 0;
+  }
+  if (invoice.payment_status === "paid") return Number(invoice.total) || 0;
   return 0;
-};
+}
+
+function invoiceAmountDue(invoice: InvoiceApi): number {
+  if (invoice.amount_due !== undefined && invoice.amount_due !== null && String(invoice.amount_due) !== "") {
+    return Math.max(0, Number(invoice.amount_due) || 0);
+  }
+  const total = Number(invoice.total) || 0;
+  return Math.max(0, total - invoiceAmountPaid(invoice));
+}
+
+function draftLinesFromInvoiceItems(items: InvoiceItemApi[]): DraftLine[] {
+  const sorted = [...items].sort((a, b) => (Number(a.position ?? 0) || 0) - (Number(b.position ?? 0) || 0));
+  return sorted.map((it) => {
+    if (it.item_type === "stock") {
+      return {
+        kind: "stock",
+        stock_id: it.stock_id != null ? String(it.stock_id) : "",
+        quantity: String(it.quantity ?? ""),
+        line_total: "",
+      } satisfies DraftLineStock;
+    }
+    return {
+      kind: "custom",
+      item_type: it.item_type === "labor" ? "labor" : "custom",
+      description: it.description ?? "",
+      quantity: String(it.quantity ?? ""),
+      unit_price: String(it.unit_price ?? ""),
+      line_total: "",
+    } satisfies DraftLineCustom;
+  });
+}
+
+function buildInvoiceItemsPayloadFromDraft(
+  lines: DraftLine[],
+  stockById: Map<string, StockApi>,
+): InvoiceItemPayload[] {
+  const out: InvoiceItemPayload[] = [];
+  for (const line of lines) {
+    if (line.kind === "stock") {
+      if (!line.stock_id.trim() || !quantityIsAllowed(line.quantity)) continue;
+      const stock = stockById.get(String(line.stock_id));
+      const payload: InvoiceItemPayload = {
+        item_type: "stock",
+        stock_id: line.stock_id,
+        description: stock?.name ?? "",
+        quantity: line.quantity.trim(),
+      };
+      const lt = parseOptionalAmount(line.line_total);
+      if (lt !== undefined) payload.line_total = lt;
+      out.push(payload);
+      continue;
+    }
+    if (!line.description.trim() || !quantityIsAllowed(line.quantity)) continue;
+    const unit = Number(line.unit_price.replace(/,/g, "."));
+    if (!Number.isFinite(unit) || unit < 0) continue;
+    const payload: InvoiceItemPayload = {
+      item_type: line.item_type,
+      description: line.description.trim(),
+      quantity: line.quantity.trim(),
+      unit_price: unit,
+    };
+    const lt = parseOptionalAmount(line.line_total);
+    if (lt !== undefined) payload.line_total = lt;
+    out.push(payload);
+  }
+  return out;
+}
 
 const loadLogoDataUrl = async () => {
   if (!logoDataUrlPromise) {
@@ -82,8 +200,6 @@ const loadLogoDataUrl = async () => {
 
 export default function Invoices() {
   const { token, user } = useAuth();
-  type StockItemInput = { stock_id: string; quantity: string };
-
   const [list, setList] = useState<InvoiceApi[]>([]);
   const [customers, setCustomers] = useState<CustomerApi[]>([]);
   const [cars, setCars] = useState<CarApi[]>([]);
@@ -103,7 +219,11 @@ export default function Invoices() {
   const [serviceOptions, setServiceOptions] = useState<ServiceApi[]>([]);
   const [stockOptions, setStockOptions] = useState<StockApi[]>([]);
   const [viewId, setViewId] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
+  const [viewingDetail, setViewingDetail] = useState<InvoiceApi | null>(null);
+  const [viewLoading, setViewLoading] = useState(false);
+
+  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
+  const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -111,8 +231,55 @@ export default function Invoices() {
   const [carId, setCarId] = useState("");
   const [serviceId, setServiceId] = useState("");
   const [paymentStatus, setPaymentStatus] = useState<"unpaid" | "partial" | "paid">("unpaid");
-  const [items, setItems] = useState<ItemInput[]>([{ description: "", quantity: "", unit_price: "", item_type: "custom" }]);
-  const [stockItems, setStockItems] = useState<StockItemInput[]>([]);
+  const [invoiceDate, setInvoiceDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [invoiceNumberInput, setInvoiceNumberInput] = useState("");
+  const [draftLines, setDraftLines] = useState<DraftLine[]>([emptyCustomLine()]);
+
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentPaidAt, setPaymentPaidAt] = useState(() => new Date().toISOString().slice(0, 10));
+  const [paymentNote, setPaymentNote] = useState("");
+  const [recordingPayment, setRecordingPayment] = useState(false);
+
+  const resetInvoiceForm = () => {
+    setEditingInvoiceId(null);
+    setCustomerId("");
+    setCarId("");
+    setServiceId("");
+    setPaymentStatus("unpaid");
+    setInvoiceDate(new Date().toISOString().slice(0, 10));
+    setInvoiceNumberInput("");
+    setDraftLines([emptyCustomLine()]);
+  };
+
+  const openCreateDialog = () => {
+    resetInvoiceForm();
+    const nextNum = `INV-${new Date().getFullYear()}-${String(list.length + 1).padStart(4, "0")}`;
+    setInvoiceNumberInput(nextNum);
+    setInvoiceDialogOpen(true);
+  };
+
+  const openEditDialog = async (invoice: InvoiceApi) => {
+    if (!token) return;
+    setSubmitting(true);
+    try {
+      const res = await getInvoiceRequest(token, invoice.id);
+      const inv = res.data;
+      setEditingInvoiceId(String(inv.id));
+      setCustomerId(String(inv.customer_id));
+      setCarId(String(inv.car_id));
+      setServiceId(inv.service_id != null ? String(inv.service_id) : "");
+      setPaymentStatus(inv.payment_status);
+      setInvoiceDate(String(inv.date).slice(0, 10));
+      setInvoiceNumberInput(inv.invoice_number);
+      const lines = draftLinesFromInvoiceItems(inv.items ?? []);
+      setDraftLines(lines.length ? lines : [emptyCustomLine()]);
+      setInvoiceDialogOpen(true);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not load invoice.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -204,97 +371,94 @@ export default function Invoices() {
     void loadStockOptions();
   }, [token, stockSelectOpen, stockSearch]);
 
-  const filtered = list;
+  useEffect(() => {
+    const loadView = async () => {
+      if (!token || !viewId) {
+        setViewingDetail(null);
+        return;
+      }
+      setViewLoading(true);
+      try {
+        const res = await getInvoiceRequest(token, viewId);
+        setViewingDetail(res.data);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Could not load invoice.");
+        setViewingDetail(null);
+      } finally {
+        setViewLoading(false);
+      }
+    };
+    void loadView();
+  }, [token, viewId]);
 
-  const viewing = viewId ? list.find((invoice) => String(invoice.id) === viewId) : null;
+  const filtered = list;
+  const stockById = new Map(stocks.map((s) => [String(s.id), s]));
+
+  const viewing = viewId ? (viewingDetail ?? list.find((invoice) => String(invoice.id) === viewId) ?? null) : null;
   const viewCustomer = viewing ? customers.find((c) => String(c.id) === String(viewing.customer_id)) : null;
   const viewCar = viewing ? cars.find((c) => String(c.id) === String(viewing.car_id)) : null;
-  const viewService = viewing ? services.find((s) => String(s.id) === String(viewing.service_id)) : null;
 
-  const updateItem = (idx: number, patch: Partial<ItemInput>) =>
-    setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
-
-  const addStockRow = () => setStockItems((prev) => [...prev, { stock_id: "", quantity: "" }]);
-  const updateStockRow = (index: number, key: "stock_id" | "quantity", value: string) =>
-    setStockItems((prev) =>
-      prev.map((item, i) => (i === index ? { ...item, [key]: value } : item)),
+  const updateDraftLine = (index: number, patch: Partial<DraftLineStock & DraftLineCustom>) =>
+    setDraftLines((prev) =>
+      prev.map((line, i) => {
+        if (i !== index) return line;
+        if (line.kind === "stock") {
+          return { ...line, ...patch } as DraftLineStock;
+        }
+        return { ...line, ...patch } as DraftLineCustom;
+      }),
     );
-  const removeStockRow = (index: number) => setStockItems((prev) => prev.filter((_, i) => i !== index));
 
-  const handleSave = async (e: React.FormEvent) => {
+  const handleInvoiceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!token) return;
     if (!customerId || !carId) {
       toast.error("Select customer and car");
       return;
     }
+    if (!invoiceNumberInput.trim()) {
+      toast.error("Invoice number is required");
+      return;
+    }
 
-    const invoiceNumber = `INV-${new Date().getFullYear()}-${String(list.length + 1).padStart(4, "0")}`;
-    const validItems = items
-      .filter((it) => it.description.trim())
-      .map((it) => {
-        const quantity = Number(it.quantity);
-        const unitPrice = Number(it.unit_price);
-        return {
-          description: it.description.trim(),
-          quantity,
-          unit_price: unitPrice,
-          item_type: it.item_type,
-        };
-      })
-      .filter((it) => Number.isFinite(it.quantity) && it.quantity > 0 && Number.isFinite(it.unit_price) && it.unit_price >= 0);
-
-    const validStockItems = stockItems
-      .map((it) => ({
-        stock_id: it.stock_id,
-        quantity: Number(it.quantity),
-      }))
-      .filter((it) => it.stock_id && Number.isFinite(it.quantity) && it.quantity > 0);
-
-    const stockById = new Map(stocks.map((stock) => [String(stock.id), stock]));
-    const orderedInvoiceItems = [
-      ...validStockItems.map((it) => {
-        const stock = stockById.get(String(it.stock_id));
-        return {
-          item_type: "stock" as const,
-          stock_id: it.stock_id,
-          description: stock?.name ?? "",
-          quantity: it.quantity,
-        };
-      }),
-      ...validItems.map((it) => ({
-        item_type: it.item_type,
-        description: it.description,
-        quantity: it.quantity,
-        unit_price: it.unit_price,
-      })),
-    ].map((item, index) => ({
-      ...item,
-      position: index + 1,
-    }));
+    const invoice_items = buildInvoiceItemsPayloadFromDraft(draftLines, stockById);
+    if (invoice_items.length === 0) {
+      toast.error("Add at least one invoice line with valid quantity (number or SET).");
+      return;
+    }
 
     setSubmitting(true);
     try {
-      const response = await createInvoiceRequest(token, {
-        invoice_number: invoiceNumber,
-        date: new Date().toISOString().slice(0, 10),
-        customer_id: customerId,
-        car_id: carId,
-        ...(serviceId ? { service_id: serviceId } : {}),
-        payment_status: paymentStatus,
-        invoice_items: orderedInvoiceItems,
-      });
-      setList((prev) => [response.data, ...prev]);
-      setOpen(false);
-      setCustomerId("");
-      setCarId("");
-      setServiceId("");
-      setPaymentStatus("unpaid");
-      setItems([{ description: "", quantity: "", unit_price: "", item_type: "custom" }]);
-      setStockItems([]);
-      toast.success("Invoice created");
+      if (editingInvoiceId) {
+        const response = await updateInvoiceRequest(token, editingInvoiceId, {
+          invoice_number: invoiceNumberInput.trim(),
+          date: invoiceDate,
+          customer_id: customerId,
+          car_id: carId,
+          service_id: serviceId || null,
+          payment_status: paymentStatus,
+          invoice_items,
+        });
+        setList((prev) => prev.map((inv) => (String(inv.id) === editingInvoiceId ? response.data : inv)));
+        if (viewId === editingInvoiceId) setViewingDetail(response.data);
+        toast.success("Invoice updated");
+      } else {
+        const response = await createInvoiceRequest(token, {
+          invoice_number: invoiceNumberInput.trim(),
+          date: invoiceDate,
+          customer_id: customerId,
+          car_id: carId,
+          ...(serviceId ? { service_id: serviceId } : {}),
+          payment_status: paymentStatus,
+          invoice_items,
+        });
+        setList((prev) => [response.data, ...prev]);
+        toast.success("Invoice created");
+      }
+      setInvoiceDialogOpen(false);
+      resetInvoiceForm();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not create invoice.");
+      toast.error(error instanceof Error ? error.message : "Could not save invoice.");
     } finally {
       setSubmitting(false);
     }
@@ -305,8 +469,36 @@ export default function Invoices() {
     try {
       const response = await updateInvoicePaymentStatusRequest(token, invoiceId, value);
       setList((prev) => prev.map((invoice) => (String(invoice.id) === String(invoiceId) ? { ...invoice, ...response.data } : invoice)));
+      if (viewId && String(viewId) === String(invoiceId)) setViewingDetail(response.data);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not update payment status.");
+    }
+  };
+
+  const handleRecordPayment = async () => {
+    if (!token || !viewing) return;
+    const amt = Number(paymentAmount.replace(/,/g, ".").trim());
+    if (!Number.isFinite(amt) || amt <= 0) {
+      toast.error("Enter a valid payment amount.");
+      return;
+    }
+    setRecordingPayment(true);
+    try {
+      const res = await recordInvoicePaymentRequest(token, viewing.id, {
+        amount: amt,
+        paid_at: paymentPaidAt || undefined,
+        note: paymentNote.trim() || undefined,
+      });
+      setList((prev) => prev.map((inv) => (String(inv.id) === String(viewing.id) ? res.data : inv)));
+      setViewingDetail(res.data);
+      setPaymentAmount("");
+      setPaymentNote("");
+      setPaymentPaidAt(new Date().toISOString().slice(0, 10));
+      toast.success("Payment recorded");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not record payment.");
+    } finally {
+      setRecordingPayment(false);
     }
   };
 
@@ -315,6 +507,7 @@ export default function Invoices() {
     try {
       await deleteInvoiceRequest(token, invoiceId);
       setList((prev) => prev.filter((invoice) => String(invoice.id) !== String(invoiceId)));
+      if (viewId === String(invoiceId)) setViewId(null);
       toast.success("Invoice deleted");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not delete invoice.");
@@ -330,8 +523,8 @@ export default function Invoices() {
   const openPrintableInvoice = (invoice: InvoiceApi) => {
     const customer = customers.find((c) => String(c.id) === String(invoice.customer_id));
     const car = cars.find((c) => String(c.id) === String(invoice.car_id));
-    const amountPaid = resolvePaidAmount(invoice.payment_status, Number(invoice.total) || 0);
-    const balanceDue = Math.max(0, (Number(invoice.total) || 0) - amountPaid);
+    const amountPaid = invoiceAmountPaid(invoice);
+    const balanceDue = invoiceAmountDue(invoice);
     const printedAt = new Date();
     const rows = invoice.items
       .map(
@@ -454,8 +647,8 @@ export default function Invoices() {
   const downloadInvoicePdf = async (invoice: InvoiceApi) => {
     const customer = customers.find((c) => String(c.id) === String(invoice.customer_id));
     const car = cars.find((c) => String(c.id) === String(invoice.car_id));
-    const amountPaid = resolvePaidAmount(invoice.payment_status, Number(invoice.total) || 0);
-    const balanceDue = Math.max(0, (Number(invoice.total) || 0) - amountPaid);
+    const amountPaid = invoiceAmountPaid(invoice);
+    const balanceDue = invoiceAmountDue(invoice);
     const printedAt = new Date();
     const logoDataUrl = await loadLogoDataUrl();
 
@@ -583,203 +776,266 @@ export default function Invoices() {
     <div className="space-y-6">
       <PageHeader
         title="Invoices"
-        description="Generate and manage invoices. Service totals are calculated from invoice items."
+        description="Generate and manage invoices. Record payments; amount paid and due update from the server."
         actions={
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button size="lg" className="bg-gradient-primary text-primary-foreground shadow-md">
+          <>
+            <Dialog
+              open={invoiceDialogOpen}
+              onOpenChange={(o) => {
+                setInvoiceDialogOpen(o);
+                if (!o) resetInvoiceForm();
+              }}
+            >
+              <Button
+                size="lg"
+                className="bg-gradient-primary text-primary-foreground shadow-md"
+                onClick={() => openCreateDialog()}
+              >
                 <Plus className="mr-2 h-5 w-5" /> New Invoice
               </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-4xl">
-              <DialogHeader><DialogTitle>Create New Invoice</DialogTitle></DialogHeader>
-              <form className="space-y-4" onSubmit={handleSave}>
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                  <div className="space-y-2">
-                    <Label>Customer *</Label>
-                    <Select
-                      value={customerId}
-                      onValueChange={(v) => { setCustomerId(v); setCarId(""); setServiceId(""); }}
-                      open={customerSelectOpen}
-                      onOpenChange={setCustomerSelectOpen}
-                    >
-                      <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
-                      <SelectContent>
-                        <div className="p-2">
-                          <Input
-                            value={customerSearch}
-                            onChange={(e) => setCustomerSearch(e.target.value)}
-                            onKeyDown={(e) => e.stopPropagation()}
-                            placeholder="Search customer"
-                          />
-                        </div>
-                        {customerOptions.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+              <DialogContent className="max-w-4xl">
+                <DialogHeader>
+                  <DialogTitle>{editingInvoiceId ? "Edit Invoice" : "Create New Invoice"}</DialogTitle>
+                </DialogHeader>
+                <form className="space-y-4" onSubmit={handleInvoiceSubmit}>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Invoice # *</Label>
+                      <Input
+                        value={invoiceNumberInput}
+                        onChange={(e) => setInvoiceNumberInput(e.target.value)}
+                        placeholder="INV-2026-0001"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Date *</Label>
+                      <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} required />
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Car *</Label>
-                    <Select
-                      value={carId}
-                      onValueChange={(v) => { setCarId(v); setServiceId(""); }}
-                      disabled={!customerId}
-                      open={carSelectOpen}
-                      onOpenChange={setCarSelectOpen}
-                    >
-                      <SelectTrigger><SelectValue placeholder={customerId ? "Select car" : "Select customer first"} /></SelectTrigger>
-                      <SelectContent>
-                        <div className="p-2">
-                          <Input
-                            value={carSearch}
-                            onChange={(e) => setCarSearch(e.target.value)}
-                            onKeyDown={(e) => e.stopPropagation()}
-                            placeholder="Search car plate"
-                          />
-                        </div>
-                        {carOptions.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.plate_number}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Service (optional)</Label>
-                    <Select
-                      value={serviceId}
-                      onValueChange={setServiceId}
-                      disabled={!carId}
-                      open={serviceSelectOpen}
-                      onOpenChange={setServiceSelectOpen}
-                    >
-                      <SelectTrigger><SelectValue placeholder="Select service" /></SelectTrigger>
-                      <SelectContent>
-                        <div className="p-2">
-                          <Input
-                            value={serviceSearch}
-                            onChange={(e) => setServiceSearch(e.target.value)}
-                            onKeyDown={(e) => e.stopPropagation()}
-                            placeholder="Search service"
-                          />
-                        </div>
-                        {serviceOptions.map((service) => (
-                          <SelectItem key={service.id} value={String(service.id)}>
-                            {formatDate(service.date)} - {service.problem}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Stock Items (optional)</Label>
-                    <Button type="button" variant="outline" size="sm" onClick={addStockRow}>
-                      <Plus className="mr-1 h-4 w-4" /> Add Stock
-                    </Button>
-                  </div>
-                  {stockItems.map((it, idx) => (
-                    <div key={`invoice-stock-${idx}`} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr,120px,40px]">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <div className="space-y-2">
+                      <Label>Customer *</Label>
                       <Select
-                        value={it.stock_id}
-                        onValueChange={(value) => updateStockRow(idx, "stock_id", value)}
-                        open={stockSelectOpen}
-                        onOpenChange={setStockSelectOpen}
+                        value={customerId}
+                        onValueChange={(v) => { setCustomerId(v); setCarId(""); setServiceId(""); }}
+                        open={customerSelectOpen}
+                        onOpenChange={setCustomerSelectOpen}
                       >
-                        <SelectTrigger><SelectValue placeholder="Select stock item" /></SelectTrigger>
+                        <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
                         <SelectContent>
                           <div className="p-2">
                             <Input
-                              value={stockSearch}
-                              onChange={(e) => setStockSearch(e.target.value)}
+                              value={customerSearch}
+                              onChange={(e) => setCustomerSearch(e.target.value)}
                               onKeyDown={(e) => e.stopPropagation()}
-                              placeholder="Search stock items"
+                              placeholder="Search customer"
                             />
                           </div>
-                          {stockOptions.map((stock) => (
-                            <SelectItem key={stock.id} value={String(stock.id)}>{stock.name}</SelectItem>
+                          {customerOptions.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Car *</Label>
+                      <Select
+                        value={carId}
+                        onValueChange={(v) => { setCarId(v); setServiceId(""); }}
+                        disabled={!customerId}
+                        open={carSelectOpen}
+                        onOpenChange={setCarSelectOpen}
+                      >
+                        <SelectTrigger><SelectValue placeholder={customerId ? "Select car" : "Select customer first"} /></SelectTrigger>
+                        <SelectContent>
+                          <div className="p-2">
+                            <Input
+                              value={carSearch}
+                              onChange={(e) => setCarSearch(e.target.value)}
+                              onKeyDown={(e) => e.stopPropagation()}
+                              placeholder="Search car plate"
+                            />
+                          </div>
+                          {carOptions.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.plate_number}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Service (optional)</Label>
+                      <Select
+                        value={serviceId}
+                        onValueChange={setServiceId}
+                        disabled={!carId}
+                        open={serviceSelectOpen}
+                        onOpenChange={setServiceSelectOpen}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Select service" /></SelectTrigger>
+                        <SelectContent>
+                          <div className="p-2">
+                            <Input
+                              value={serviceSearch}
+                              onChange={(e) => setServiceSearch(e.target.value)}
+                              onKeyDown={(e) => e.stopPropagation()}
+                              placeholder="Search service"
+                            />
+                          </div>
+                          {serviceOptions.map((service) => (
+                            <SelectItem key={service.id} value={String(service.id)}>
+                              {formatDate(service.date)} - {service.problem}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={it.quantity}
-                        onChange={(e) => updateStockRow(idx, "quantity", e.target.value)}
-                        placeholder="Qty"
-                      />
-                      <Button type="button" variant="ghost" size="icon" onClick={() => removeStockRow(idx)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
                     </div>
-                  ))}
-                  {stocks.length === 0 && <p className="text-xs text-muted-foreground">No stock items available yet.</p>}
-                </div>
+                  </div>
 
-                <div className="space-y-2">
-                  <Label>Custom/Labor Items (optional)</Label>
                   <div className="space-y-2">
-                    {items.map((it, idx) => (
-                      <div key={idx} className="grid grid-cols-1 gap-2 sm:grid-cols-12 sm:items-center">
-                        <Input
-                          className="sm:col-span-6"
-                          placeholder="Description"
-                          value={it.description}
-                          onChange={(e) => updateItem(idx, { description: e.target.value })}
-                        />
-                        <Input
-                          className="sm:col-span-2"
-                          type="number"
-                          min={1}
-                          placeholder="Qty"
-                          value={it.quantity}
-                          onChange={(e) => updateItem(idx, { quantity: e.target.value })}
-                        />
-                        <Input
-                          className="sm:col-span-2"
-                          type="number"
-                          min={0}
-                          placeholder="Unit Price"
-                          value={it.unit_price}
-                          onChange={(e) => updateItem(idx, { unit_price: e.target.value })}
-                        />
-                        <Select value={it.item_type} onValueChange={(v) => updateItem(idx, { item_type: v as "labor" | "custom" })}>
-                          <SelectTrigger className="sm:col-span-1"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="custom">Custom</SelectItem>
-                            <SelectItem value="labor">Labor</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Button type="button" variant="ghost" size="icon" className="sm:col-span-1" onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <Label>Line items (order is preserved)</Label>
+                      <div className="flex gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => setDraftLines((p) => [...p, emptyStockLine()])}>
+                          <Plus className="mr-1 h-4 w-4" /> Stock line
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setDraftLines((p) => [...p, emptyCustomLine()])}>
+                          <Plus className="mr-1 h-4 w-4" /> Custom / labour
                         </Button>
                       </div>
-                    ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Quantity: enter a positive number, or a label such as SET. Optional line total overrides the calculated total when quantity is not a simple multiplier.
+                    </p>
+                    <div className="space-y-3">
+                      {draftLines.map((line, idx) => (
+                        <div key={`line-${idx}`} className="rounded-md border p-3 space-y-2">
+                          {line.kind === "stock" ? (
+                            <div className="grid grid-cols-1 gap-2 lg:grid-cols-12 lg:items-end">
+                              <div className="lg:col-span-5 space-y-1">
+                                <Label className="text-xs">Stock part</Label>
+                                <Select
+                                  value={line.stock_id}
+                                  onValueChange={(value) => updateDraftLine(idx, { stock_id: value })}
+                                  open={stockSelectOpen}
+                                  onOpenChange={setStockSelectOpen}
+                                >
+                                  <SelectTrigger><SelectValue placeholder="Select stock" /></SelectTrigger>
+                                  <SelectContent>
+                                    <div className="p-2">
+                                      <Input
+                                        value={stockSearch}
+                                        onChange={(e) => setStockSearch(e.target.value)}
+                                        onKeyDown={(e) => e.stopPropagation()}
+                                        placeholder="Search stock"
+                                      />
+                                    </div>
+                                    {stockOptions.map((stock) => (
+                                      <SelectItem key={stock.id} value={String(stock.id)}>{stock.name}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="lg:col-span-2 space-y-1">
+                                <Label className="text-xs">Qty (number or SET)</Label>
+                                <Input
+                                  value={line.quantity}
+                                  onChange={(e) => updateDraftLine(idx, { quantity: e.target.value })}
+                                  placeholder="e.g. 2 or SET"
+                                />
+                              </div>
+                              <div className="lg:col-span-3 space-y-1">
+                                <Label className="text-xs">Line total (optional)</Label>
+                                <Input
+                                  value={line.line_total}
+                                  onChange={(e) => updateDraftLine(idx, { line_total: e.target.value })}
+                                  placeholder="Override total"
+                                />
+                              </div>
+                              <div className="lg:col-span-2 flex justify-end">
+                                <Button type="button" variant="ghost" size="icon" onClick={() => setDraftLines((p) => p.filter((_, i) => i !== idx))}>
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 gap-2 lg:grid-cols-12 lg:items-end">
+                              <div className="lg:col-span-4 space-y-1">
+                                <Label className="text-xs">Description</Label>
+                                <Input
+                                  value={line.description}
+                                  onChange={(e) => updateDraftLine(idx, { description: e.target.value })}
+                                  placeholder="Description"
+                                />
+                              </div>
+                              <div className="lg:col-span-2 space-y-1">
+                                <Label className="text-xs">Qty (number or SET)</Label>
+                                <Input
+                                  value={line.quantity}
+                                  onChange={(e) => updateDraftLine(idx, { quantity: e.target.value })}
+                                  placeholder="e.g. 2 or SET"
+                                />
+                              </div>
+                              <div className="lg:col-span-2 space-y-1">
+                                <Label className="text-xs">Unit price</Label>
+                                <Input
+                                  value={line.unit_price}
+                                  onChange={(e) => updateDraftLine(idx, { unit_price: e.target.value })}
+                                  placeholder="0"
+                                />
+                              </div>
+                              <div className="lg:col-span-2 space-y-1">
+                                <Label className="text-xs">Line total (optional)</Label>
+                                <Input
+                                  value={line.line_total}
+                                  onChange={(e) => updateDraftLine(idx, { line_total: e.target.value })}
+                                  placeholder="Override"
+                                />
+                              </div>
+                              <div className="lg:col-span-1 space-y-1">
+                                <Label className="text-xs">Type</Label>
+                                <Select
+                                  value={line.item_type}
+                                  onValueChange={(v) => updateDraftLine(idx, { item_type: v as "labor" | "custom" })}
+                                >
+                                  <SelectTrigger><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="custom">Custom</SelectItem>
+                                    <SelectItem value="labor">Labor</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="lg:col-span-1 flex justify-end">
+                                <Button type="button" variant="ghost" size="icon" onClick={() => setDraftLines((p) => p.filter((_, i) => i !== idx))}>
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {stocks.length === 0 && <p className="text-xs text-muted-foreground">No stock items in catalog yet.</p>}
                   </div>
-                  <Button type="button" variant="outline" size="sm" onClick={() => setItems((prev) => [...prev, { description: "", quantity: "", unit_price: "", item_type: "custom" }])}>
-                    <Plus className="mr-1 h-4 w-4" /> Add Item
-                  </Button>
-                </div>
 
-                <div className="space-y-2">
-                  <Label>Payment Status</Label>
-                  <Select value={paymentStatus} onValueChange={(v) => setPaymentStatus(v as "unpaid" | "partial" | "paid")}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="unpaid">Unpaid</SelectItem>
-                      <SelectItem value="partial">Partial</SelectItem>
-                      <SelectItem value="paid">Paid</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                  <div className="space-y-2">
+                    <Label>Payment status</Label>
+                    <Select value={paymentStatus} onValueChange={(v) => setPaymentStatus(v as "unpaid" | "partial" | "paid")}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unpaid">Unpaid</SelectItem>
+                        <SelectItem value="partial">Partial</SelectItem>
+                        <SelectItem value="paid">Paid</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={submitting}>Cancel</Button>
-                  <Button type="submit" className="bg-gradient-primary" disabled={submitting}>
-                    {submitting ? "Saving..." : "Save Invoice"}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+                  <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => setInvoiceDialogOpen(false)} disabled={submitting}>Cancel</Button>
+                    <Button type="submit" className="bg-gradient-primary" disabled={submitting}>
+                      {submitting ? "Saving..." : editingInvoiceId ? "Update invoice" : "Save invoice"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </>
         }
       />
 
@@ -800,6 +1056,8 @@ export default function Invoices() {
                 <TableHead className="hidden md:table-cell">Customer</TableHead>
                 <TableHead>Car</TableHead>
                 <TableHead>Total</TableHead>
+                <TableHead className="hidden lg:table-cell text-right">Paid</TableHead>
+                <TableHead className="hidden lg:table-cell text-right">Due</TableHead>
                 <TableHead className="hidden sm:table-cell">Payment</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -807,7 +1065,7 @@ export default function Invoices() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
                     <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading invoices...</span>
                   </TableCell>
                 </TableRow>
@@ -815,6 +1073,8 @@ export default function Invoices() {
               {filtered.map((invoice) => {
                 const customer = customers.find((c) => String(c.id) === String(invoice.customer_id));
                 const car = cars.find((c) => String(c.id) === String(invoice.car_id));
+                const paid = invoiceAmountPaid(invoice);
+                const due = invoiceAmountDue(invoice);
                 return (
                   <TableRow key={invoice.id}>
                     <TableCell className="font-mono font-semibold">{invoice.invoice_number}</TableCell>
@@ -824,6 +1084,8 @@ export default function Invoices() {
                       <span className="rounded bg-primary/10 px-2 py-1 font-mono text-xs font-bold text-primary">{car?.plate_number}</span>
                     </TableCell>
                     <TableCell className="font-bold">{formatCurrency(invoice.total)}</TableCell>
+                    <TableCell className="hidden lg:table-cell text-right text-muted-foreground">{formatCurrency(paid)}</TableCell>
+                    <TableCell className="hidden lg:table-cell text-right font-medium">{formatCurrency(due)}</TableCell>
                     <TableCell className="hidden sm:table-cell">
                       <Select value={invoice.payment_status} onValueChange={(v) => void handlePaymentStatus(invoice.id, v as "unpaid" | "partial" | "paid")}>
                         <SelectTrigger className="h-8 min-w-28"><SelectValue /></SelectTrigger>
@@ -840,6 +1102,10 @@ export default function Invoices() {
                         <Button size="sm" variant="ghost" onClick={() => setViewId(String(invoice.id))}>
                           <Eye className="h-4 w-4 sm:mr-1" />
                           <span className="hidden sm:inline">View</span>
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => void openEditDialog(invoice)}>
+                          <Pencil className="h-4 w-4 sm:mr-1" />
+                          <span className="hidden sm:inline">Edit</span>
                         </Button>
                         <Button size="sm" variant="ghost" onClick={() => downloadInvoicePdf(invoice)}>
                           <Download className="h-4 w-4 sm:mr-1" />
@@ -858,6 +1124,7 @@ export default function Invoices() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => setViewId(String(invoice.id))}>View</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => void openEditDialog(invoice)}>Edit</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => downloadInvoicePdf(invoice)}>PDF</DropdownMenuItem>
                             <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void handleDelete(invoice.id)}>Delete</DropdownMenuItem>
                           </DropdownMenuContent>
@@ -869,7 +1136,7 @@ export default function Invoices() {
               })}
               {!loading && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
                     No invoices found.
                   </TableCell>
                 </TableRow>
@@ -882,7 +1149,12 @@ export default function Invoices() {
       <Dialog open={!!viewId} onOpenChange={(value) => !value && setViewId(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle>Invoice {viewing?.invoice_number}</DialogTitle></DialogHeader>
-          {viewing && (
+          {viewLoading && (
+            <div className="flex justify-center py-8 text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
+          )}
+          {!viewLoading && viewing && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-3 rounded-lg bg-muted/40 p-4 text-sm sm:grid-cols-2">
                 <div>
@@ -896,6 +1168,58 @@ export default function Invoices() {
                   <p className="text-xs text-muted-foreground">Date: {formatDate(viewing.date)}</p>
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+                <div className="rounded-md border p-2">
+                  <p className="text-muted-foreground text-xs">Total</p>
+                  <p className="font-semibold">{formatCurrency(viewing.total)}</p>
+                </div>
+                <div className="rounded-md border p-2">
+                  <p className="text-muted-foreground text-xs">Amount paid</p>
+                  <p className="font-semibold">{formatCurrency(invoiceAmountPaid(viewing))}</p>
+                </div>
+                <div className="rounded-md border p-2">
+                  <p className="text-muted-foreground text-xs">Amount due</p>
+                  <p className="font-semibold text-primary">{formatCurrency(invoiceAmountDue(viewing))}</p>
+                </div>
+                <div className="rounded-md border p-2">
+                  <p className="text-muted-foreground text-xs">Status</p>
+                  <Badge className={paymentBadge(viewing.payment_status)}>{viewing.payment_status}</Badge>
+                </div>
+              </div>
+
+              <div className="space-y-2 rounded-md border p-3">
+                <Label className="text-sm font-semibold">Record payment</Label>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="Amount"
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)}
+                  />
+                  <Input type="date" value={paymentPaidAt} onChange={(e) => setPaymentPaidAt(e.target.value)} />
+                  <Input placeholder="Note (optional)" value={paymentNote} onChange={(e) => setPaymentNote(e.target.value)} />
+                </div>
+                <Button type="button" size="sm" className="bg-gradient-primary" disabled={recordingPayment || invoiceAmountDue(viewing) <= 0} onClick={() => void handleRecordPayment()}>
+                  {recordingPayment ? "Recording…" : "Add payment"}
+                </Button>
+              </div>
+
+              {viewing.payments && viewing.payments.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">Payments</p>
+                  <ul className="max-h-40 space-y-1 overflow-y-auto text-sm">
+                    {viewing.payments.map((p) => (
+                      <li key={p.id} className="flex justify-between gap-2 rounded bg-muted/50 px-2 py-1">
+                        <span>{p.paid_at ? formatDate(String(p.paid_at)) : "—"}</span>
+                        <span className="font-mono font-medium">{formatCurrency(p.amount)}</span>
+                        <span className="truncate text-muted-foreground">{p.note ?? "—"}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -921,6 +1245,7 @@ export default function Invoices() {
                 </TableBody>
               </Table>
               <div className="flex flex-wrap justify-end gap-2">
+                <Button variant="outline" onClick={() => void openEditDialog(viewing)}>Edit invoice</Button>
                 <Button variant="outline" onClick={() => openPrintableInvoice(viewing)}>Print</Button>
                 <Button className="bg-gradient-primary" onClick={() => downloadInvoicePdf(viewing)}>
                   <Download className="mr-2 h-4 w-4" /> Download PDF
