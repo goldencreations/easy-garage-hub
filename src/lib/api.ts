@@ -662,7 +662,8 @@ export type InvoiceItemPayload = {
 export function createInvoiceRequest(
   token: string,
   payload: {
-    invoice_number: string;
+    /** Omit when the server auto-generates invoice numbers. */
+    invoice_number?: string;
     date: string;
     customer_id: string | number;
     car_id: string | number;

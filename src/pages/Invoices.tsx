@@ -232,7 +232,6 @@ export default function Invoices() {
   const [serviceId, setServiceId] = useState("");
   const [paymentStatus, setPaymentStatus] = useState<"unpaid" | "partial" | "paid">("unpaid");
   const [invoiceDate, setInvoiceDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [invoiceNumberInput, setInvoiceNumberInput] = useState("");
   const [draftLines, setDraftLines] = useState<DraftLine[]>([emptyCustomLine()]);
 
   const [paymentAmount, setPaymentAmount] = useState("");
@@ -247,14 +246,11 @@ export default function Invoices() {
     setServiceId("");
     setPaymentStatus("unpaid");
     setInvoiceDate(new Date().toISOString().slice(0, 10));
-    setInvoiceNumberInput("");
     setDraftLines([emptyCustomLine()]);
   };
 
   const openCreateDialog = () => {
     resetInvoiceForm();
-    const nextNum = `INV-${new Date().getFullYear()}-${String(list.length + 1).padStart(4, "0")}`;
-    setInvoiceNumberInput(nextNum);
     setInvoiceDialogOpen(true);
   };
 
@@ -270,7 +266,6 @@ export default function Invoices() {
       setServiceId(inv.service_id != null ? String(inv.service_id) : "");
       setPaymentStatus(inv.payment_status);
       setInvoiceDate(String(inv.date).slice(0, 10));
-      setInvoiceNumberInput(inv.invoice_number);
       const lines = draftLinesFromInvoiceItems(inv.items ?? []);
       setDraftLines(lines.length ? lines : [emptyCustomLine()]);
       setInvoiceDialogOpen(true);
@@ -416,11 +411,6 @@ export default function Invoices() {
       toast.error("Select customer and car");
       return;
     }
-    if (!invoiceNumberInput.trim()) {
-      toast.error("Invoice number is required");
-      return;
-    }
-
     const invoice_items = buildInvoiceItemsPayloadFromDraft(draftLines, stockById);
     if (invoice_items.length === 0) {
       toast.error("Add at least one invoice line with valid quantity (number or SET).");
@@ -431,7 +421,6 @@ export default function Invoices() {
     try {
       if (editingInvoiceId) {
         const response = await updateInvoiceRequest(token, editingInvoiceId, {
-          invoice_number: invoiceNumberInput.trim(),
           date: invoiceDate,
           customer_id: customerId,
           car_id: carId,
@@ -444,7 +433,6 @@ export default function Invoices() {
         toast.success("Invoice updated");
       } else {
         const response = await createInvoiceRequest(token, {
-          invoice_number: invoiceNumberInput.trim(),
           date: invoiceDate,
           customer_id: customerId,
           car_id: carId,
@@ -468,8 +456,24 @@ export default function Invoices() {
     if (!token) return;
     try {
       const response = await updateInvoicePaymentStatusRequest(token, invoiceId, value);
-      setList((prev) => prev.map((invoice) => (String(invoice.id) === String(invoiceId) ? { ...invoice, ...response.data } : invoice)));
-      if (viewId && String(viewId) === String(invoiceId)) setViewingDetail(response.data);
+      const patch = response.data;
+      setList((prev) =>
+        prev.map((invoice) =>
+          String(invoice.id) === String(invoiceId)
+            ? {
+                ...invoice,
+                payment_status: patch.payment_status,
+                amount_paid: patch.amount_paid ?? invoice.amount_paid,
+                amount_due: patch.amount_due ?? invoice.amount_due,
+                payments: patch.payments ?? invoice.payments,
+              }
+            : invoice,
+        ),
+      );
+      if (viewId && String(viewId) === String(invoiceId)) {
+        const detail = await getInvoiceRequest(token, invoiceId);
+        setViewingDetail(detail.data);
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not update payment status.");
     }
@@ -798,20 +802,12 @@ export default function Invoices() {
                   <DialogTitle>{editingInvoiceId ? "Edit Invoice" : "Create New Invoice"}</DialogTitle>
                 </DialogHeader>
                 <form className="space-y-4" onSubmit={handleInvoiceSubmit}>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>Invoice # *</Label>
-                      <Input
-                        value={invoiceNumberInput}
-                        onChange={(e) => setInvoiceNumberInput(e.target.value)}
-                        placeholder="INV-2026-0001"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Date *</Label>
-                      <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} required />
-                    </div>
+                  <div className="space-y-2">
+                    <Label>Date *</Label>
+                    <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} required />
+                    <p className="text-xs text-muted-foreground">
+                      Invoice numbers are generated on the server when you save. You do not need to enter one.
+                    </p>
                   </div>
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                     <div className="space-y-2">
@@ -1024,6 +1020,9 @@ export default function Invoices() {
                         <SelectItem value="paid">Paid</SelectItem>
                       </SelectContent>
                     </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Amount paid and amount due are driven by recorded payments on the invoice. Use the invoice view to add payments; use status here or in the list when you need the label to match reality.
+                    </p>
                   </div>
 
                   <DialogFooter>
@@ -1188,7 +1187,28 @@ export default function Invoices() {
               </div>
 
               <div className="space-y-2 rounded-md border p-3">
+                <Label className="text-sm font-semibold">Update payment status</Label>
+                <p className="text-xs text-muted-foreground">
+                  Updates the status label on the server. Amount paid and amount due follow the payment entries listed below—use Record payment to add an installment and refresh those totals. Individual payment rows cannot be edited through the current API.
+                </p>
+                <Select
+                  value={viewing.payment_status}
+                  onValueChange={(v) => void handlePaymentStatus(viewing.id, v as "unpaid" | "partial" | "paid")}
+                >
+                  <SelectTrigger className="max-w-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unpaid">Unpaid</SelectItem>
+                    <SelectItem value="partial">Partial</SelectItem>
+                    <SelectItem value="paid">Paid</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2 rounded-md border p-3">
                 <Label className="text-sm font-semibold">Record payment</Label>
+                <p className="text-xs text-muted-foreground">
+                  Each save adds an installment and refreshes amount paid and amount due from the server.
+                </p>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                   <Input
                     type="text"
