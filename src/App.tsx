@@ -21,6 +21,8 @@ import Users from "./pages/Users";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
 import NotFound from "./pages/NotFound.tsx";
+import SystemUnavailable from "./pages/SystemUnavailable";
+import { SYSTEM_UNAVAILABLE } from "@/config/system";
 
 const queryClient = new QueryClient();
 
@@ -32,25 +34,31 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route element={<ProtectedLayout />}>
-              <Route element={<AppLayout />}>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/customers" element={<Customers />} />
-                <Route path="/customers/:id" element={<CustomerDetail />} />
-                <Route path="/cars" element={<Cars />} />
-                <Route path="/cars/:id" element={<CarDetail />} />
-                <Route path="/services" element={<Services />} />
-                <Route path="/staff" element={<Staff />} />
-                <Route path="/invoices" element={<Invoices />} />
-                <Route path="/expenses" element={<Expenses />} />
-                <Route path="/credit-purchases" element={<CreditPurchases />} />
-                <Route path="/stock" element={<Stock />} />
-                <Route path="/users" element={<Users />} />
-                <Route path="*" element={<NotFound />} />
-              </Route>
-            </Route>
+            {SYSTEM_UNAVAILABLE ? (
+              <Route path="*" element={<SystemUnavailable />} />
+            ) : (
+              <>
+                <Route path="/login" element={<Login />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route element={<ProtectedLayout />}>
+                  <Route element={<AppLayout />}>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/customers" element={<Customers />} />
+                    <Route path="/customers/:id" element={<CustomerDetail />} />
+                    <Route path="/cars" element={<Cars />} />
+                    <Route path="/cars/:id" element={<CarDetail />} />
+                    <Route path="/services" element={<Services />} />
+                    <Route path="/staff" element={<Staff />} />
+                    <Route path="/invoices" element={<Invoices />} />
+                    <Route path="/expenses" element={<Expenses />} />
+                    <Route path="/credit-purchases" element={<CreditPurchases />} />
+                    <Route path="/stock" element={<Stock />} />
+                    <Route path="/users" element={<Users />} />
+                    <Route path="*" element={<NotFound />} />
+                  </Route>
+                </Route>
+              </>
+            )}
           </Routes>
         </BrowserRouter>
       </TooltipProvider>
