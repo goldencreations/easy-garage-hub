@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Download, Eye, Loader2, Plus, Trash2, MoreHorizontal, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataCard } from "@/components/DataCard";
@@ -292,7 +292,7 @@ export default function Invoices() {
 
       try {
         const [invoicesRes, customersRes, carsRes, servicesRes, stocksRes] = await Promise.all([
-          listInvoicesRequest(token, { search: query }),
+          listInvoicesRequest(token),
           listCustomersRequest(token),
           listCarsRequest(token),
           listServicesRequest(token),
@@ -315,7 +315,7 @@ export default function Invoices() {
     };
 
     void loadData();
-  }, [token, query]);
+  }, [token]);
 
   useEffect(() => {
     const loadCustomerOptions = async () => {
@@ -393,7 +393,28 @@ export default function Invoices() {
     void loadView();
   }, [token, viewId]);
 
-  const filtered = list;
+  const customerById = useMemo(() => new Map(customers.map((c) => [String(c.id), c])), [customers]);
+  const carById = useMemo(() => new Map(cars.map((c) => [String(c.id), c])), [cars]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((invoice) => {
+      const customer = invoice.customer ?? customerById.get(String(invoice.customer_id));
+      const car = invoice.car ?? carById.get(String(invoice.car_id));
+      const blob = [
+        invoice.invoice_number,
+        customer?.name,
+        car?.plate_number,
+        car?.vehicle_type,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return blob.includes(q);
+    });
+  }, [list, query, customerById, carById]);
+
   const stockById = new Map(stocks.map((s) => [String(s.id), s]));
 
   const viewing = viewId ? (viewingDetail ?? list.find((invoice) => String(invoice.id) === viewId) ?? null) : null;
@@ -1110,8 +1131,8 @@ export default function Invoices() {
                 </TableRow>
               )}
               {filtered.map((invoice) => {
-                const customer = customers.find((c) => String(c.id) === String(invoice.customer_id));
-                const car = cars.find((c) => String(c.id) === String(invoice.car_id));
+                const customer = invoice.customer ?? customerById.get(String(invoice.customer_id));
+                const car = invoice.car ?? carById.get(String(invoice.car_id));
                 const paid = invoiceAmountPaid(invoice);
                 const due = invoiceAmountDue(invoice);
                 return (
