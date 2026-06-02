@@ -19,7 +19,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { jsPDF } from "jspdf";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   convertProformaToInvoiceRequest,
   createProformaRequest,
@@ -253,9 +252,12 @@ function docTitle(doc: BillableDoc): string {
   return "proforma_number" in doc ? "Proforma" : "Invoice";
 }
 
-export default function Invoices() {
+type InvoicesPageProps = {
+  mode: "proformas" | "invoices";
+};
+
+export default function Invoices({ mode }: InvoicesPageProps) {
   const { token, user } = useAuth();
-  const [activeTab, setActiveTab] = useState<"proformas" | "invoices">("proformas");
   const [proformaList, setProformaList] = useState<ProformaApi[]>([]);
   const [list, setList] = useState<InvoiceApi[]>([]);
   const [customers, setCustomers] = useState<CustomerApi[]>([]);
@@ -1011,10 +1013,14 @@ export default function Invoices() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Proformas & Invoices"
-        description="Create proforma quotes first. After the customer pays, convert to an official invoice. Stock is deducted when marked paid."
+        title={mode === "proformas" ? "Proformas" : "Invoices"}
+        description={
+          mode === "proformas"
+            ? "Create proforma quotes for customers. Convert to an official invoice after payment."
+            : "Official invoices created from paid proformas. Stock is deducted when marked paid."
+        }
         actions={
-          activeTab === "proformas" ? (
+          mode === "proformas" ? (
             <Dialog
               open={invoiceDialogOpen}
               onOpenChange={(o) => {
@@ -1260,13 +1266,7 @@ export default function Invoices() {
         }
       />
 
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "proformas" | "invoices")}>
-        <TabsList>
-          <TabsTrigger value="proformas">Proformas</TabsTrigger>
-          <TabsTrigger value="invoices">Invoices</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="proformas" className="mt-4">
+      {mode === "proformas" ? (
           <DataCard
             actions={
               <>
@@ -1354,9 +1354,7 @@ export default function Invoices() {
               </Table>
             </div>
           </DataCard>
-        </TabsContent>
-
-        <TabsContent value="invoices" className="mt-4">
+      ) : (
           <DataCard
             actions={
               <>
@@ -1458,8 +1456,7 @@ export default function Invoices() {
           </Table>
         </div>
           </DataCard>
-        </TabsContent>
-      </Tabs>
+      )}
 
       <Dialog open={!!viewProformaId} onOpenChange={(value) => !value && setViewProformaId(null)}>
         <DialogContent className="max-w-2xl">
