@@ -163,12 +163,19 @@ export async function buildInvoicePdf(
   return doc.output("blob");
 }
 
-export function downloadInvoicePdf(blob: Blob, invoiceNumber: string) {
-  const safeName = invoiceNumber.replace(/[^\w.-]+/g, "_");
+export function downloadInvoicePdf(blob: Blob, invoiceNumber: string, customerName?: string | null) {
+  const safe = (value: string) =>
+    value
+      .trim()
+      .replace(/[^\w\s-]+/g, "")
+      .replace(/\s+/g, "_")
+      .slice(0, 80) || "document";
+  const parts = [customerName, invoiceNumber].filter((part) => part && String(part).trim());
+  const fileName = `${parts.map((part) => safe(String(part))).join("_")}.pdf`;
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${safeName}.pdf`;
+  a.download = fileName;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 2500);
 }

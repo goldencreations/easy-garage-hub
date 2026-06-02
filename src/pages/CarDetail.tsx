@@ -154,10 +154,10 @@ export default function CarDetail() {
   const handleExportPdf = useCallback(
     async (invoice: InvoiceApi, blob?: Blob) => {
       const resolved = blob ?? (await createPdfBlob(invoice));
-      downloadInvoicePdf(resolved, invoice.invoice_number);
+      downloadInvoicePdf(resolved, invoice.invoice_number, owner?.name);
       toast.success("PDF downloaded");
     },
-    [createPdfBlob],
+    [createPdfBlob, owner?.name],
   );
 
   if (loading) return <p className="text-sm text-muted-foreground">Loading car details...</p>;

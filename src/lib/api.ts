@@ -117,10 +117,12 @@ export type InvoicePaymentApi = {
 export type InvoiceApi = {
   id: number | string;
   invoice_number: string;
+  title?: "Invoice";
   date: string;
   customer_id: number | string;
   car_id: number | string;
   service_id?: number | string | null;
+  proforma_id?: number | string | null;
   payment_status: "unpaid" | "partial" | "paid";
   total: number | string;
   items: InvoiceItemApi[];
@@ -132,6 +134,47 @@ export type InvoiceApi = {
   customer?: CustomerApi;
   car?: CarApi;
   service?: ServiceApi;
+};
+
+export type ProformaApi = {
+  id: number | string;
+  proforma_number: string;
+  title?: "Proforma";
+  date: string;
+  customer_id: number | string;
+  car_id: number | string;
+  service_id?: number | string | null;
+  total: number | string;
+  status: "draft" | "converted";
+  items: InvoiceItemApi[];
+  customer?: CustomerApi;
+  car?: CarApi;
+  service?: ServiceApi;
+  invoice?: InvoiceApi | null;
+};
+
+export type ExpenseLedgerRowApi = {
+  date: string;
+  debit: { details: string; amount: number | string } | null;
+  credit: { details: string; amount: number | string } | null;
+};
+
+export type ExpenseLedgerApi = {
+  period: "daily" | "weekly" | "monthly";
+  from: string;
+  to: string;
+  balance_bd: number | string;
+  mapato: number | string;
+  matumizi: number | string;
+  balance_cf: number | string;
+  rows: ExpenseLedgerRowApi[];
+};
+
+export type IncomeEntryApi = {
+  id: number | string;
+  date: string;
+  details: string;
+  amount: number | string;
 };
 
 export type CarDetailsApi = {
@@ -659,34 +702,6 @@ export type InvoiceItemPayload = {
   position?: number;
 };
 
-export function createInvoiceRequest(
-  token: string,
-  payload: {
-    /** Omit when the server auto-generates invoice numbers. */
-    invoice_number?: string;
-    date: string;
-    customer_id: string | number;
-    car_id: string | number;
-    service_id?: string | number;
-    payment_status: "unpaid" | "partial" | "paid";
-    invoice_items?: InvoiceItemPayload[];
-    stock_items?: Array<{ stock_id: string | number; quantity: number }>;
-    items?: Array<{
-      description: string;
-      quantity: string | number;
-      unit_price: number;
-      item_type?: "labor" | "custom";
-      line_total?: number;
-    }>;
-  },
-) {
-  return apiRequest<InvoiceApi>("/invoices", {
-    method: "POST",
-    token,
-    body: payload,
-  });
-}
-
 export function getInvoiceRequest(token: string, invoiceId: string | number) {
   return apiRequest<InvoiceApi>(`/invoices/${invoiceId}`, {
     method: "GET",
@@ -766,6 +781,115 @@ export function deleteInvoiceRequest(token: string, invoiceId: string | number) 
   });
 }
 
+export type ProformaItemPayload = InvoiceItemPayload;
+
+export function listProformasRequest(
+  token: string,
+  params?: {
+    search?: string;
+    status?: ProformaApi["status"] | "";
+    customer_id?: string | number;
+    car_id?: string | number;
+  },
+) {
+  const query = new URLSearchParams();
+  if (params?.search?.trim()) query.set("search", params.search.trim());
+  if (params?.status) query.set("status", params.status);
+  if (params?.customer_id !== undefined && params?.customer_id !== null && String(params.customer_id) !== "") {
+    query.set("customer_id", String(params.customer_id));
+  }
+  if (params?.car_id !== undefined && params?.car_id !== null && String(params.car_id) !== "") {
+    query.set("car_id", String(params.car_id));
+  }
+  return apiRequest<ProformaApi[]>(`/proformas${query.toString() ? `?${query.toString()}` : ""}`, {
+    method: "GET",
+    token,
+  });
+}
+
+export function createProformaRequest(
+  token: string,
+  payload: {
+    proforma_number?: string;
+    date: string;
+    customer_id: string | number;
+    car_id: string | number;
+    service_id?: string | number;
+    proforma_items?: ProformaItemPayload[];
+    stock_items?: Array<{ stock_id: string | number; quantity: number }>;
+    items?: Array<{
+      description: string;
+      quantity: string | number;
+      unit_price: number;
+      item_type?: "labor" | "custom";
+      line_total?: number;
+    }>;
+  },
+) {
+  return apiRequest<ProformaApi>("/proformas", {
+    method: "POST",
+    token,
+    body: payload,
+  });
+}
+
+export function getProformaRequest(token: string, proformaId: string | number) {
+  return apiRequest<ProformaApi>(`/proformas/${proformaId}`, {
+    method: "GET",
+    token,
+  });
+}
+
+export function updateProformaRequest(
+  token: string,
+  proformaId: string | number,
+  payload: {
+    proforma_number?: string;
+    date?: string;
+    customer_id?: string | number;
+    car_id?: string | number;
+    service_id?: string | number | null;
+    proforma_items?: ProformaItemPayload[];
+    stock_items?: Array<{ stock_id: string | number; quantity: number }>;
+    items?: Array<{
+      description: string;
+      quantity: string | number;
+      unit_price: number;
+      item_type?: "labor" | "custom";
+      line_total?: number;
+    }>;
+  },
+) {
+  return apiRequest<ProformaApi>(`/proformas/${proformaId}`, {
+    method: "PUT",
+    token,
+    body: payload,
+  });
+}
+
+export function deleteProformaRequest(token: string, proformaId: string | number) {
+  return apiRequest<[] | Record<string, never>>(`/proformas/${proformaId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export function convertProformaToInvoiceRequest(
+  token: string,
+  proformaId: string | number,
+  payload: {
+    invoice_number?: string;
+    payment_status: "unpaid" | "partial" | "paid";
+    date?: string;
+  },
+) {
+  return apiRequest<InvoiceApi>(`/proformas/${proformaId}/convert-to-invoice`, {
+    method: "POST",
+    token,
+    body: payload,
+  });
+}
+
 export function listExpensesRequest(token: string, params?: { search?: string; category?: ExpenseApi["category"] | "" }) {
   const query = new URLSearchParams();
   if (params?.search?.trim()) query.set("search", params.search.trim());
@@ -830,6 +954,55 @@ export function openingBalanceSuggestionRequest(token: string, date: string) {
     from_date?: string | null;
   }>(`/expenses/opening-balance-suggestion?${query.toString()}`, {
     method: "GET",
+    token,
+  });
+}
+
+export function getExpenseLedgerRequest(
+  token: string,
+  params: { period: ExpenseLedgerApi["period"]; date?: string },
+) {
+  const query = new URLSearchParams({ period: params.period });
+  if (params.date?.trim()) query.set("date", params.date.trim());
+  return apiRequest<ExpenseLedgerApi>(`/expenses/ledger?${query.toString()}`, {
+    method: "GET",
+    token,
+  });
+}
+
+export function listIncomeEntriesRequest(token: string) {
+  return apiRequest<IncomeEntryApi[]>("/income-entries", {
+    method: "GET",
+    token,
+  });
+}
+
+export function createIncomeEntryRequest(
+  token: string,
+  payload: { date: string; details: string; amount: number },
+) {
+  return apiRequest<IncomeEntryApi>("/income-entries", {
+    method: "POST",
+    token,
+    body: payload,
+  });
+}
+
+export function updateIncomeEntryRequest(
+  token: string,
+  incomeId: string | number,
+  payload: { date?: string; details?: string; amount?: number },
+) {
+  return apiRequest<IncomeEntryApi>(`/income-entries/${incomeId}`, {
+    method: "PUT",
+    token,
+    body: payload,
+  });
+}
+
+export function deleteIncomeEntryRequest(token: string, incomeId: string | number) {
+  return apiRequest<[] | Record<string, never>>(`/income-entries/${incomeId}`, {
+    method: "DELETE",
     token,
   });
 }

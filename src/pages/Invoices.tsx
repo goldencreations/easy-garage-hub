@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, Eye, Loader2, Plus, Trash2, MoreHorizontal, Pencil } from "lucide-react";
+import { Download, Eye, FileCheck, Loader2, Plus, Trash2, MoreHorizontal, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataCard } from "@/components/DataCard";
 import { SearchBar } from "@/components/SearchBar";
@@ -19,25 +19,32 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { jsPDF } from "jspdf";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  createInvoiceRequest,
+  convertProformaToInvoiceRequest,
+  createProformaRequest,
   deleteInvoiceRequest,
+  deleteProformaRequest,
   getInvoiceRequest,
+  getProformaRequest,
   listCarsRequest,
   listCustomersRequest,
   listInvoicesRequest,
+  listProformasRequest,
   listServicesRequest,
   listStocksRequest,
   recordInvoicePaymentRequest,
   updateInvoicePaymentRequest,
   updateInvoiceRequest,
   updateInvoicePaymentStatusRequest,
+  updateProformaRequest,
   type CarApi,
   type CustomerApi,
   type InvoiceApi,
   type InvoicePaymentApi,
   type InvoiceItemApi,
   type InvoiceItemPayload,
+  type ProformaApi,
   type ServiceApi,
   type StockApi,
 } from "@/lib/api";
@@ -143,6 +150,41 @@ function draftLinesFromInvoiceItems(items: InvoiceItemApi[]): DraftLine[] {
   });
 }
 
+function documentPdfFilename(docNumber: string, customerName?: string | null) {
+  const safe = (value: string) =>
+    value
+      .trim()
+      .replace(/[^\w\s-]+/g, "")
+      .replace(/\s+/g, "_")
+      .slice(0, 80) || "document";
+  const parts = [customerName, docNumber].filter((part) => part && String(part).trim());
+  return `${parts.map((part) => safe(String(part))).join("_")}.pdf`;
+}
+
+function computeDraftLineTotal(line: DraftLine, stockById: Map<string, StockApi>): number {
+  if (line.kind === "stock") {
+    const override = parseOptionalAmount(line.line_total);
+    if (override !== undefined) return override;
+    const stock = stockById.get(String(line.stock_id));
+    const qtyNorm = line.quantity.trim().replace(/,/g, ".");
+    const qty = Number(qtyNorm);
+    const price = Number(stock?.price ?? 0);
+    if (Number.isFinite(qty) && qty > 0 && Number.isFinite(price)) return qty * price;
+    return 0;
+  }
+  const override = parseOptionalAmount(line.line_total);
+  if (override !== undefined) return override;
+  const qtyNorm = line.quantity.trim().replace(/,/g, ".");
+  const qty = Number(qtyNorm);
+  const unit = Number(line.unit_price.replace(/,/g, "."));
+  if (Number.isFinite(qty) && qty > 0 && Number.isFinite(unit)) return qty * unit;
+  return 0;
+}
+
+function computeDraftTotal(lines: DraftLine[], stockById: Map<string, StockApi>): number {
+  return lines.reduce((sum, line) => sum + computeDraftLineTotal(line, stockById), 0);
+}
+
 function buildInvoiceItemsPayloadFromDraft(
   lines: DraftLine[],
   stockById: Map<string, StockApi>,
@@ -200,8 +242,21 @@ const loadLogoDataUrl = async () => {
   return logoDataUrlPromise;
 };
 
+type BillableDoc = InvoiceApi | ProformaApi;
+
+function docNumber(doc: BillableDoc): string {
+  return "proforma_number" in doc ? doc.proforma_number : doc.invoice_number;
+}
+
+function docTitle(doc: BillableDoc): string {
+  if ("title" in doc && doc.title) return doc.title;
+  return "proforma_number" in doc ? "Proforma" : "Invoice";
+}
+
 export default function Invoices() {
   const { token, user } = useAuth();
+  const [activeTab, setActiveTab] = useState<"proformas" | "invoices">("proformas");
+  const [proformaList, setProformaList] = useState<ProformaApi[]>([]);
   const [list, setList] = useState<InvoiceApi[]>([]);
   const [customers, setCustomers] = useState<CustomerApi[]>([]);
   const [cars, setCars] = useState<CarApi[]>([]);
@@ -225,14 +280,20 @@ export default function Invoices() {
   const [viewLoading, setViewLoading] = useState(false);
 
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
-  const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
+  const [editingProformaId, setEditingProformaId] = useState<string | null>(null);
+  const [viewProformaId, setViewProformaId] = useState<string | null>(null);
+  const [viewingProformaDetail, setViewingProformaDetail] = useState<ProformaApi | null>(null);
+  const [viewProformaLoading, setViewProformaLoading] = useState(false);
+  const [convertTarget, setConvertTarget] = useState<ProformaApi | null>(null);
+  const [convertPaymentStatus, setConvertPaymentStatus] = useState<"unpaid" | "partial" | "paid">("paid");
+  const [convertDate, setConvertDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [converting, setConverting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   const [customerId, setCustomerId] = useState("");
   const [carId, setCarId] = useState("");
   const [serviceId, setServiceId] = useState("");
-  const [paymentStatus, setPaymentStatus] = useState<"unpaid" | "partial" | "paid">("unpaid");
   const [invoiceDate, setInvoiceDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [draftLines, setDraftLines] = useState<DraftLine[]>([emptyCustomLine()]);
 
@@ -247,11 +308,10 @@ export default function Invoices() {
   const [updatingPayment, setUpdatingPayment] = useState(false);
 
   const resetInvoiceForm = () => {
-    setEditingInvoiceId(null);
+    setEditingProformaId(null);
     setCustomerId("");
     setCarId("");
     setServiceId("");
-    setPaymentStatus("unpaid");
     setInvoiceDate(new Date().toISOString().slice(0, 10));
     setDraftLines([emptyCustomLine()]);
   };
@@ -261,23 +321,26 @@ export default function Invoices() {
     setInvoiceDialogOpen(true);
   };
 
-  const openEditDialog = async (invoice: InvoiceApi) => {
+  const openEditProformaDialog = async (proforma: ProformaApi) => {
     if (!token) return;
+    if (proforma.status === "converted") {
+      toast.error("Converted proformas cannot be edited.");
+      return;
+    }
     setSubmitting(true);
     try {
-      const res = await getInvoiceRequest(token, invoice.id);
-      const inv = res.data;
-      setEditingInvoiceId(String(inv.id));
-      setCustomerId(String(inv.customer_id));
-      setCarId(String(inv.car_id));
-      setServiceId(inv.service_id != null ? String(inv.service_id) : "");
-      setPaymentStatus(inv.payment_status);
-      setInvoiceDate(String(inv.date).slice(0, 10));
-      const lines = draftLinesFromInvoiceItems(inv.items ?? []);
+      const res = await getProformaRequest(token, proforma.id);
+      const pf = res.data;
+      setEditingProformaId(String(pf.id));
+      setCustomerId(String(pf.customer_id));
+      setCarId(String(pf.car_id));
+      setServiceId(pf.service_id != null ? String(pf.service_id) : "");
+      setInvoiceDate(String(pf.date).slice(0, 10));
+      const lines = draftLinesFromInvoiceItems(pf.items ?? []);
       setDraftLines(lines.length ? lines : [emptyCustomLine()]);
       setInvoiceDialogOpen(true);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not load invoice.");
+      toast.error(e instanceof Error ? e.message : "Could not load proforma.");
     } finally {
       setSubmitting(false);
     }
@@ -291,13 +354,15 @@ export default function Invoices() {
       }
 
       try {
-        const [invoicesRes, customersRes, carsRes, servicesRes, stocksRes] = await Promise.all([
+        const [proformasRes, invoicesRes, customersRes, carsRes, servicesRes, stocksRes] = await Promise.all([
+          listProformasRequest(token),
           listInvoicesRequest(token),
           listCustomersRequest(token),
           listCarsRequest(token),
           listServicesRequest(token),
           listStocksRequest(token),
         ]);
+        setProformaList(proformasRes.data);
         setList(invoicesRes.data);
         setCustomers(customersRes.data);
         setCars(carsRes.data);
@@ -308,7 +373,7 @@ export default function Invoices() {
         setServiceOptions(servicesRes.data);
         setStockOptions(stocksRes.data);
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Could not load invoices.");
+        toast.error(error instanceof Error ? error.message : "Could not load documents.");
       } finally {
         setLoading(false);
       }
@@ -393,8 +458,43 @@ export default function Invoices() {
     void loadView();
   }, [token, viewId]);
 
+  useEffect(() => {
+    const loadProformaView = async () => {
+      if (!token || !viewProformaId) {
+        setViewingProformaDetail(null);
+        return;
+      }
+      setViewProformaLoading(true);
+      try {
+        const res = await getProformaRequest(token, viewProformaId);
+        setViewingProformaDetail(res.data);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Could not load proforma.");
+        setViewingProformaDetail(null);
+      } finally {
+        setViewProformaLoading(false);
+      }
+    };
+    void loadProformaView();
+  }, [token, viewProformaId]);
+
   const customerById = useMemo(() => new Map(customers.map((c) => [String(c.id), c])), [customers]);
   const carById = useMemo(() => new Map(cars.map((c) => [String(c.id), c])), [cars]);
+  const stockById = useMemo(() => new Map(stocks.map((s) => [String(s.id), s])), [stocks]);
+
+  const filteredProformas = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return proformaList;
+    return proformaList.filter((proforma) => {
+      const customer = proforma.customer ?? customerById.get(String(proforma.customer_id));
+      const car = proforma.car ?? carById.get(String(proforma.car_id));
+      const blob = [proforma.proforma_number, customer?.name, car?.plate_number, car?.vehicle_type]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return blob.includes(q);
+    });
+  }, [proformaList, query, customerById, carById]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -415,7 +515,7 @@ export default function Invoices() {
     });
   }, [list, query, customerById, carById]);
 
-  const stockById = new Map(stocks.map((s) => [String(s.id), s]));
+  const draftTotalPreview = useMemo(() => computeDraftTotal(draftLines, stockById), [draftLines, stockById]);
 
   const viewing = viewId ? (viewingDetail ?? list.find((invoice) => String(invoice.id) === viewId) ?? null) : null;
   const viewCustomer = viewing ? customers.find((c) => String(c.id) === String(viewing.customer_id)) : null;
@@ -432,51 +532,101 @@ export default function Invoices() {
       }),
     );
 
-  const handleInvoiceSubmit = async (e: React.FormEvent) => {
+  const handleProformaSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!token) return;
     if (!customerId || !carId) {
       toast.error("Select customer and car");
       return;
     }
-    const invoice_items = buildInvoiceItemsPayloadFromDraft(draftLines, stockById);
-    if (invoice_items.length === 0) {
-      toast.error("Add at least one invoice line with valid quantity (number or SET).");
+    const proforma_items = buildInvoiceItemsPayloadFromDraft(draftLines, stockById);
+    if (proforma_items.length === 0) {
+      toast.error("Add at least one line with valid quantity (number or SET).");
       return;
     }
 
     setSubmitting(true);
     try {
-      if (editingInvoiceId) {
-        const response = await updateInvoiceRequest(token, editingInvoiceId, {
+      if (editingProformaId) {
+        const response = await updateProformaRequest(token, editingProformaId, {
           date: invoiceDate,
           customer_id: customerId,
           car_id: carId,
           service_id: serviceId || null,
-          payment_status: paymentStatus,
-          invoice_items,
+          proforma_items,
         });
-        setList((prev) => prev.map((inv) => (String(inv.id) === editingInvoiceId ? response.data : inv)));
-        if (viewId === editingInvoiceId) setViewingDetail(response.data);
-        toast.success("Invoice updated");
+        setProformaList((prev) => prev.map((pf) => (String(pf.id) === editingProformaId ? response.data : pf)));
+        if (viewProformaId === editingProformaId) setViewingProformaDetail(response.data);
+        toast.success("Proforma updated");
       } else {
-        const response = await createInvoiceRequest(token, {
+        const response = await createProformaRequest(token, {
           date: invoiceDate,
           customer_id: customerId,
           car_id: carId,
           ...(serviceId ? { service_id: serviceId } : {}),
-          payment_status: paymentStatus,
-          invoice_items,
+          proforma_items,
         });
-        setList((prev) => [response.data, ...prev]);
-        toast.success("Invoice created");
+        setProformaList((prev) => [response.data, ...prev]);
+        toast.success("Proforma created");
       }
       setInvoiceDialogOpen(false);
       resetInvoiceForm();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save invoice.");
+      toast.error(error instanceof Error ? error.message : "Could not save proforma.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const openConvertDialog = (proforma: ProformaApi) => {
+    if (proforma.status === "converted") {
+      toast.info("This proforma is already converted.");
+      return;
+    }
+    setConvertTarget(proforma);
+    setConvertPaymentStatus("paid");
+    setConvertDate(new Date().toISOString().slice(0, 10));
+  };
+
+  const handleConvertToInvoice = async () => {
+    if (!token || !convertTarget) return;
+    setConverting(true);
+    try {
+      const res = await convertProformaToInvoiceRequest(token, convertTarget.id, {
+        payment_status: convertPaymentStatus,
+        date: convertDate,
+      });
+      setProformaList((prev) =>
+        prev.map((pf) =>
+          String(pf.id) === String(convertTarget.id)
+            ? { ...pf, status: "converted" as const, invoice: res.data }
+            : pf,
+        ),
+      );
+      setList((prev) => [res.data, ...prev.filter((inv) => String(inv.id) !== String(res.data.id))]);
+      if (viewProformaId === String(convertTarget.id)) {
+        const detail = await getProformaRequest(token, convertTarget.id);
+        setViewingProformaDetail(detail.data);
+      }
+      setConvertTarget(null);
+      setActiveTab("invoices");
+      toast.success("Proforma converted to invoice");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not convert proforma.");
+    } finally {
+      setConverting(false);
+    }
+  };
+
+  const handleDeleteProforma = async (proformaId: string | number) => {
+    if (!token) return;
+    try {
+      await deleteProformaRequest(token, proformaId);
+      setProformaList((prev) => prev.filter((pf) => String(pf.id) !== String(proformaId)));
+      if (viewProformaId === String(proformaId)) setViewProformaId(null);
+      toast.success("Proforma deleted");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not delete proforma.");
     }
   };
 
@@ -585,13 +735,25 @@ export default function Invoices() {
     return "bg-muted text-muted-foreground hover:bg-muted";
   };
 
-  const openPrintableInvoice = (invoice: InvoiceApi) => {
-    const customer = customers.find((c) => String(c.id) === String(invoice.customer_id));
-    const car = cars.find((c) => String(c.id) === String(invoice.car_id));
-    const amountPaid = invoiceAmountPaid(invoice);
-    const balanceDue = invoiceAmountDue(invoice);
+  const viewingProforma = viewProformaId
+    ? (viewingProformaDetail ?? proformaList.find((pf) => String(pf.id) === viewProformaId) ?? null)
+    : null;
+  const viewProformaCustomer = viewingProforma
+    ? customers.find((c) => String(c.id) === String(viewingProforma.customer_id))
+    : null;
+  const viewProformaCar = viewingProforma ? cars.find((c) => String(c.id) === String(viewingProforma.car_id)) : null;
+
+  const openPrintableDocument = (doc: BillableDoc) => {
+    const customer = customers.find((c) => String(c.id) === String(doc.customer_id));
+    const car = cars.find((c) => String(c.id) === String(doc.car_id));
+    const title = docTitle(doc).toUpperCase();
+    const refLabel = "proforma_number" in doc ? "Proforma REF" : "Invoice REF";
+    const number = docNumber(doc);
+    const invoice = "invoice_number" in doc ? doc : null;
+    const amountPaid = invoice ? invoiceAmountPaid(invoice) : 0;
+    const balanceDue = invoice ? invoiceAmountDue(invoice) : Number(doc.total) || 0;
     const printedAt = new Date();
-    const rows = invoice.items
+    const rows = doc.items
       .map(
         (item, index) => `
           <tr>
@@ -606,7 +768,7 @@ export default function Invoices() {
 
     const printWindow = window.open("", "_blank", "width=1000,height=800");
     if (!printWindow) {
-      toast.error("Popup blocked. Please allow popups to print invoice.");
+      toast.error("Popup blocked. Please allow popups to print document.");
       return;
     }
 
@@ -614,7 +776,7 @@ export default function Invoices() {
       <!doctype html>
       <html>
         <head>
-          <title>Invoice ${invoice.invoice_number}</title>
+          <title>${title} ${number}</title>
           <style>
             body { font-family: Arial, sans-serif; margin: 20px; color: #111; }
             .top { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
@@ -651,9 +813,9 @@ export default function Invoices() {
               </div>
             </div>
             <div>
-              <h1 class="invoice-title">INVOICE</h1>
-              <p class="muted"><strong>Invoice REF:</strong> ${invoice.invoice_number}</p>
-              <p class="muted"><strong>Date:</strong> ${formatInvoiceDateLong(invoice.date)}</p>
+              <h1 class="invoice-title">${title}</h1>
+              <p class="muted"><strong>${refLabel}:</strong> ${number}</p>
+              <p class="muted"><strong>Date:</strong> ${formatInvoiceDateLong(doc.date)}</p>
               <div class="block">
                 <div class="label">INVOICE FROM:</div>
                 <div class="from">
@@ -695,10 +857,10 @@ export default function Invoices() {
               </ul>
             </div>
             <div class="summary">
-              <div class="summary-row"><span>Subtotal</span><span>${formatTzs(invoice.total)}</span></div>
-              <div class="summary-row"><span>Total Amount</span><span>${formatTzs(invoice.total)} TZS</span></div>
-              <div class="summary-row"><span>Amount Paid</span><span>${formatTzs(amountPaid)}</span></div>
-              <div class="summary-row"><span>Balance Due</span><span>${formatTzs(balanceDue)}</span></div>
+              <div class="summary-row"><span>Subtotal</span><span>${formatTzs(doc.total)}</span></div>
+              <div class="summary-row"><span>Total Amount</span><span>${formatTzs(doc.total)} TZS</span></div>
+              ${invoice ? `<div class="summary-row"><span>Amount Paid</span><span>${formatTzs(amountPaid)}</span></div>
+              <div class="summary-row"><span>Balance Due</span><span>${formatTzs(balanceDue)}</span></div>` : ""}
             </div>
           </div>
         </body>
@@ -709,11 +871,15 @@ export default function Invoices() {
     printWindow.print();
   };
 
-  const downloadInvoicePdf = async (invoice: InvoiceApi) => {
-    const customer = customers.find((c) => String(c.id) === String(invoice.customer_id));
-    const car = cars.find((c) => String(c.id) === String(invoice.car_id));
-    const amountPaid = invoiceAmountPaid(invoice);
-    const balanceDue = invoiceAmountDue(invoice);
+  const downloadDocumentPdf = async (billable: BillableDoc) => {
+    const customer = customers.find((c) => String(c.id) === String(billable.customer_id));
+    const car = cars.find((c) => String(c.id) === String(billable.car_id));
+    const title = docTitle(billable).toUpperCase();
+    const refLabel = "proforma_number" in billable ? "Proforma REF" : "Invoice REF";
+    const number = docNumber(billable);
+    const invoice = "invoice_number" in billable ? billable : null;
+    const amountPaid = invoice ? invoiceAmountPaid(invoice) : 0;
+    const balanceDue = invoice ? invoiceAmountDue(invoice) : Number(billable.total) || 0;
     const printedAt = new Date();
     const logoDataUrl = await loadLogoDataUrl();
 
@@ -731,13 +897,13 @@ export default function Invoices() {
     doc.setTextColor(214, 0, 0);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(26);
-    doc.text("INVOICE", 196, y + 8, { align: "right" });
+    doc.text(title, 196, y + 8, { align: "right" });
 
     doc.setTextColor(0, 0, 0);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
-    doc.text(`Invoice REF: ${invoice.invoice_number}`, 196, y + 14, { align: "right" });
-    doc.text(`Date: ${formatInvoiceDateLong(invoice.date)}`, 196, y + 20, { align: "right" });
+    doc.text(`${refLabel}: ${number}`, 196, y + 14, { align: "right" });
+    doc.text(`Date: ${formatInvoiceDateLong(billable.date)}`, 196, y + 20, { align: "right" });
 
     y = 36;
     doc.setFont("helvetica", "bold");
@@ -782,7 +948,7 @@ export default function Invoices() {
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(9);
 
-    for (const [index, item] of invoice.items.entries()) {
+    for (const [index, item] of billable.items.entries()) {
       if (y > 270) {
         doc.addPage();
         y = 20;
@@ -820,13 +986,18 @@ export default function Invoices() {
     const boxW = 66;
     const rowH = 7;
     doc.setDrawColor(0, 0, 0);
-    doc.rect(boxX, boxY, boxW, rowH * 4 + 2);
-    const summaryRows = [
-      ["Subtotal", formatTzs(invoice.total)],
-      ["Total Amount", `${formatTzs(invoice.total)} TZS`],
-      ["Amount Paid", formatTzs(amountPaid)],
-      ["Balance Due", formatTzs(balanceDue)],
-    ] as const;
+    const summaryRows = invoice
+      ? ([
+          ["Subtotal", formatTzs(billable.total)],
+          ["Total Amount", `${formatTzs(billable.total)} TZS`],
+          ["Amount Paid", formatTzs(amountPaid)],
+          ["Balance Due", formatTzs(balanceDue)],
+        ] as const)
+      : ([
+          ["Subtotal", formatTzs(billable.total)],
+          ["Total Amount", `${formatTzs(billable.total)} TZS`],
+        ] as const);
+    doc.rect(boxX, boxY, boxW, rowH * summaryRows.length + 2);
     summaryRows.forEach(([label, value], idx) => {
       const lineY = boxY + 6 + idx * rowH;
       if (idx > 0) doc.line(boxX, boxY + 2 + idx * rowH, boxX + boxW, boxY + 2 + idx * rowH);
@@ -834,16 +1005,16 @@ export default function Invoices() {
       doc.text(value, boxX + boxW - 2, lineY, { align: "right" });
     });
 
-    doc.save(`${invoice.invoice_number.replace(/[^\w.-]+/g, "_")}.pdf`);
+    doc.save(documentPdfFilename(number, customer?.name));
   };
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Invoices"
-        description="Generate and manage invoices. Record payments; amount paid and due update from the server."
+        title="Proformas & Invoices"
+        description="Create proforma quotes first. After the customer pays, convert to an official invoice. Stock is deducted when marked paid."
         actions={
-          <>
+          activeTab === "proformas" ? (
             <Dialog
               open={invoiceDialogOpen}
               onOpenChange={(o) => {
@@ -856,18 +1027,18 @@ export default function Invoices() {
                 className="bg-gradient-primary text-primary-foreground shadow-md"
                 onClick={() => openCreateDialog()}
               >
-                <Plus className="mr-2 h-5 w-5" /> New Invoice
+                <Plus className="mr-2 h-5 w-5" /> New Proforma
               </Button>
-              <DialogContent className="max-w-4xl">
+              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>{editingInvoiceId ? "Edit Invoice" : "Create New Invoice"}</DialogTitle>
+                  <DialogTitle>{editingProformaId ? "Edit Proforma" : "Create New Proforma"}</DialogTitle>
                 </DialogHeader>
-                <form className="space-y-4" onSubmit={handleInvoiceSubmit}>
+                <form className="space-y-4" onSubmit={handleProformaSubmit}>
                   <div className="space-y-2">
                     <Label>Date *</Label>
                     <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} required />
                     <p className="text-xs text-muted-foreground">
-                      Invoice numbers are generated on the server when you save. You do not need to enter one.
+                      Proforma numbers are generated on the server when you save.
                     </p>
                   </div>
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -1071,66 +1242,153 @@ export default function Invoices() {
                     {stocks.length === 0 && <p className="text-xs text-muted-foreground">No stock items in catalog yet.</p>}
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>Payment status</Label>
-                    <Select value={paymentStatus} onValueChange={(v) => setPaymentStatus(v as "unpaid" | "partial" | "paid")}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="unpaid">Unpaid</SelectItem>
-                        <SelectItem value="partial">Partial</SelectItem>
-                        <SelectItem value="paid">Paid</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      Amount paid and amount due follow recorded payments. Open the invoice view to add payments or edit an existing payment row; use status here or in the list when you need the label to match reality.
-                    </p>
+                  <div className="rounded-lg border bg-muted/40 p-4 flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-medium">Estimated total (preview)</span>
+                    <span className="text-xl font-bold text-primary">{formatCurrency(draftTotalPreview)}</span>
                   </div>
 
                   <DialogFooter>
                     <Button type="button" variant="outline" onClick={() => setInvoiceDialogOpen(false)} disabled={submitting}>Cancel</Button>
                     <Button type="submit" className="bg-gradient-primary" disabled={submitting}>
-                      {submitting ? "Saving..." : editingInvoiceId ? "Update invoice" : "Save invoice"}
+                      {submitting ? "Saving..." : editingProformaId ? "Update proforma" : "Save proforma"}
                     </Button>
                   </DialogFooter>
                 </form>
               </DialogContent>
             </Dialog>
-          </>
+          ) : null
         }
       />
 
-      <DataCard
-        actions={
-          <>
-            <SearchBar value={query} onChange={setQuery} placeholder="Search by invoice #, customer, plate..." />
-            <ExportActions entity="invoices" />
-          </>
-        }
-      >
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Invoice #</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead className="hidden md:table-cell">Customer</TableHead>
-                <TableHead>Car</TableHead>
-                <TableHead>Total</TableHead>
-                <TableHead className="hidden lg:table-cell text-right">Paid</TableHead>
-                <TableHead className="hidden lg:table-cell text-right">Due</TableHead>
-                <TableHead className="hidden sm:table-cell">Payment</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading && (
-                <TableRow>
-                  <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
-                    <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading invoices...</span>
-                  </TableCell>
-                </TableRow>
-              )}
-              {filtered.map((invoice) => {
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "proformas" | "invoices")}>
+        <TabsList>
+          <TabsTrigger value="proformas">Proformas</TabsTrigger>
+          <TabsTrigger value="invoices">Invoices</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="proformas" className="mt-4">
+          <DataCard
+            actions={
+              <>
+                <SearchBar value={query} onChange={setQuery} placeholder="Search proforma #, customer, plate..." />
+                <ExportActions entity="proformas" />
+              </>
+            }
+          >
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Proforma #</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="hidden md:table-cell">Customer</TableHead>
+                    <TableHead>Car</TableHead>
+                    <TableHead>Total</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loading && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                        <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading proformas...</span>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {filteredProformas.map((proforma) => {
+                    const customer = proforma.customer ?? customerById.get(String(proforma.customer_id));
+                    const car = proforma.car ?? carById.get(String(proforma.car_id));
+                    return (
+                      <TableRow key={proforma.id}>
+                        <TableCell className="font-mono font-semibold">{proforma.proforma_number}</TableCell>
+                        <TableCell>{formatDate(proforma.date)}</TableCell>
+                        <TableCell className="hidden md:table-cell">{customer?.name}</TableCell>
+                        <TableCell>
+                          <span className="rounded bg-primary/10 px-2 py-1 font-mono text-xs font-bold text-primary">{car?.plate_number}</span>
+                        </TableCell>
+                        <TableCell className="font-bold">{formatCurrency(proforma.total)}</TableCell>
+                        <TableCell>
+                          <Badge variant={proforma.status === "converted" ? "secondary" : "outline"}>
+                            {proforma.status === "converted" ? "Converted" : "Draft"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="hidden flex-wrap justify-end gap-1 sm:flex">
+                            <Button size="sm" variant="ghost" onClick={() => setViewProformaId(String(proforma.id))}>
+                              <Eye className="h-4 w-4 sm:mr-1" />
+                              <span className="hidden sm:inline">View</span>
+                            </Button>
+                            {proforma.status === "draft" && (
+                              <>
+                                <Button size="sm" variant="ghost" onClick={() => void openEditProformaDialog(proforma)}>
+                                  <Pencil className="h-4 w-4 sm:mr-1" />
+                                  <span className="hidden sm:inline">Edit</span>
+                                </Button>
+                                <Button size="sm" variant="ghost" title="Convert to invoice" onClick={() => openConvertDialog(proforma)}>
+                                  <FileCheck className="h-4 w-4 sm:mr-1" />
+                                  <span className="hidden sm:inline">To invoice</span>
+                                </Button>
+                                <Button size="icon" variant="ghost" onClick={() => void handleDeleteProforma(proforma.id)}>
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </>
+                            )}
+                            <Button size="sm" variant="ghost" onClick={() => downloadDocumentPdf(proforma)}>
+                              <Download className="h-4 w-4 sm:mr-1" />
+                              <span className="hidden sm:inline">PDF</span>
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {!loading && filteredProformas.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                        No proformas found.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </DataCard>
+        </TabsContent>
+
+        <TabsContent value="invoices" className="mt-4">
+          <DataCard
+            actions={
+              <>
+                <SearchBar value={query} onChange={setQuery} placeholder="Search invoice #, customer, plate..." />
+                <ExportActions entity="invoices" />
+              </>
+            }
+          >
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Invoice #</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="hidden md:table-cell">Customer</TableHead>
+                    <TableHead>Car</TableHead>
+                    <TableHead>Total</TableHead>
+                    <TableHead className="hidden lg:table-cell text-right">Paid</TableHead>
+                    <TableHead className="hidden lg:table-cell text-right">Due</TableHead>
+                    <TableHead className="hidden sm:table-cell">Payment</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loading && (
+                    <TableRow>
+                      <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
+                        <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading invoices...</span>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {filtered.map((invoice) => {
                 const customer = invoice.customer ?? customerById.get(String(invoice.customer_id));
                 const car = invoice.car ?? carById.get(String(invoice.car_id));
                 const paid = invoiceAmountPaid(invoice);
@@ -1163,11 +1421,7 @@ export default function Invoices() {
                           <Eye className="h-4 w-4 sm:mr-1" />
                           <span className="hidden sm:inline">View</span>
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => void openEditDialog(invoice)}>
-                          <Pencil className="h-4 w-4 sm:mr-1" />
-                          <span className="hidden sm:inline">Edit</span>
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => downloadInvoicePdf(invoice)}>
+                        <Button size="sm" variant="ghost" onClick={() => downloadDocumentPdf(invoice)}>
                           <Download className="h-4 w-4 sm:mr-1" />
                           <span className="hidden sm:inline">PDF</span>
                         </Button>
@@ -1184,8 +1438,7 @@ export default function Invoices() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => setViewId(String(invoice.id))}>View</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => void openEditDialog(invoice)}>Edit</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => downloadInvoicePdf(invoice)}>PDF</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => downloadDocumentPdf(invoice)}>PDF</DropdownMenuItem>
                             <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void handleDelete(invoice.id)}>Delete</DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -1204,7 +1457,141 @@ export default function Invoices() {
             </TableBody>
           </Table>
         </div>
-      </DataCard>
+          </DataCard>
+        </TabsContent>
+      </Tabs>
+
+      <Dialog open={!!viewProformaId} onOpenChange={(value) => !value && setViewProformaId(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader><DialogTitle>Proforma {viewingProforma?.proforma_number}</DialogTitle></DialogHeader>
+          {viewProformaLoading && (
+            <div className="flex justify-center py-8 text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
+          )}
+          {!viewProformaLoading && viewingProforma && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-3 rounded-lg bg-muted/40 p-4 text-sm sm:grid-cols-2">
+                <div>
+                  <p className="text-muted-foreground">Bill To</p>
+                  <p className="font-semibold">{viewProformaCustomer?.name}</p>
+                  <p className="text-xs text-muted-foreground">{viewProformaCustomer?.phone}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Vehicle</p>
+                  <p className="font-semibold">{viewProformaCar?.plate_number}</p>
+                  <p className="text-xs text-muted-foreground">Date: {formatDate(viewingProforma.date)}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={viewingProforma.status === "converted" ? "secondary" : "outline"}>
+                  {viewingProforma.status === "converted" ? "Converted" : "Draft"}
+                </Badge>
+                {viewingProforma.invoice && (
+                  <span className="text-sm text-muted-foreground">
+                    Invoice: <span className="font-mono font-semibold">{viewingProforma.invoice.invoice_number}</span>
+                  </span>
+                )}
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Description</TableHead>
+                    <TableHead className="text-right">Qty</TableHead>
+                    <TableHead className="text-right">Price</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {viewingProforma.items.map((item, index) => (
+                    <TableRow key={`${item.description}-${index}`}>
+                      <TableCell>{item.description}</TableCell>
+                      <TableCell className="text-right">{item.quantity}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(item.unit_price)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(item.line_total)}</TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-right text-lg font-bold">Total</TableCell>
+                    <TableCell className="text-right text-lg font-bold text-primary">{formatCurrency(viewingProforma.total)}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+              <div className="flex flex-wrap justify-end gap-2">
+                {viewingProforma.status === "draft" && (
+                  <>
+                    <Button variant="outline" onClick={() => void openEditProformaDialog(viewingProforma)}>Edit proforma</Button>
+                    <Button className="bg-gradient-primary" onClick={() => openConvertDialog(viewingProforma)}>
+                      <FileCheck className="mr-2 h-4 w-4" /> Convert to invoice
+                    </Button>
+                  </>
+                )}
+                <Button variant="outline" onClick={() => openPrintableDocument(viewingProforma)}>Print</Button>
+                <Button className="bg-gradient-primary" onClick={() => downloadDocumentPdf(viewingProforma)}>
+                  <Download className="mr-2 h-4 w-4" /> Download PDF
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!convertTarget} onOpenChange={(open) => !open && setConvertTarget(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Convert to invoice</DialogTitle>
+          </DialogHeader>
+          {convertTarget && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Confirm conversion after the customer has paid. Stock is deducted when payment status is paid.
+              </p>
+              <div className="rounded-lg border bg-muted/30 p-4 space-y-2 text-sm">
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground">Proforma</span>
+                  <span className="font-mono font-semibold">{convertTarget.proforma_number}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground">Customer</span>
+                  <span className="font-medium">
+                    {convertTarget.customer?.name ??
+                      customerById.get(String(convertTarget.customer_id))?.name ??
+                      "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground">Total</span>
+                  <span className="font-bold text-primary">{formatCurrency(convertTarget.total)}</span>
+                </div>
+                <div className="text-xs text-muted-foreground">{convertTarget.items.length} line item(s)</div>
+              </div>
+              <div className="space-y-2">
+                <Label>Invoice date</Label>
+                <Input type="date" value={convertDate} onChange={(e) => setConvertDate(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Payment status</Label>
+                <Select value={convertPaymentStatus} onValueChange={(v) => setConvertPaymentStatus(v as "unpaid" | "partial" | "paid")}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="paid">Paid (deduct stock)</SelectItem>
+                    <SelectItem value="partial">Partial</SelectItem>
+                    <SelectItem value="unpaid">Unpaid</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setConvertTarget(null)} disabled={converting}>
+                  Cancel
+                </Button>
+                <Button type="button" className="bg-gradient-primary" disabled={converting} onClick={() => void handleConvertToInvoice()}>
+                  {converting ? "Converting…" : "Confirm & create invoice"}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!viewId} onOpenChange={(value) => !value && setViewId(null)}>
         <DialogContent className="max-w-2xl">
@@ -1331,9 +1718,8 @@ export default function Invoices() {
                 </TableBody>
               </Table>
               <div className="flex flex-wrap justify-end gap-2">
-                <Button variant="outline" onClick={() => void openEditDialog(viewing)}>Edit invoice</Button>
-                <Button variant="outline" onClick={() => openPrintableInvoice(viewing)}>Print</Button>
-                <Button className="bg-gradient-primary" onClick={() => downloadInvoicePdf(viewing)}>
+                <Button variant="outline" onClick={() => openPrintableDocument(viewing)}>Print</Button>
+                <Button className="bg-gradient-primary" onClick={() => downloadDocumentPdf(viewing)}>
                   <Download className="mr-2 h-4 w-4" /> Download PDF
                 </Button>
               </div>
