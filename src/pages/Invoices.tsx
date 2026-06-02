@@ -22,7 +22,6 @@ import { jsPDF } from "jspdf";
 import {
   convertProformaToInvoiceRequest,
   createProformaRequest,
-  deleteInvoiceRequest,
   deleteProformaRequest,
   getInvoiceRequest,
   getProformaRequest,
@@ -32,15 +31,10 @@ import {
   listProformasRequest,
   listServicesRequest,
   listStocksRequest,
-  recordInvoicePaymentRequest,
-  updateInvoicePaymentRequest,
-  updateInvoiceRequest,
-  updateInvoicePaymentStatusRequest,
   updateProformaRequest,
   type CarApi,
   type CustomerApi,
   type InvoiceApi,
-  type InvoicePaymentApi,
   type InvoiceItemApi,
   type InvoiceItemPayload,
   type ProformaApi,
@@ -299,16 +293,6 @@ export default function Invoices({ mode }: InvoicesPageProps) {
   const [invoiceDate, setInvoiceDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [draftLines, setDraftLines] = useState<DraftLine[]>([emptyCustomLine()]);
 
-  const [paymentAmount, setPaymentAmount] = useState("");
-  const [paymentPaidAt, setPaymentPaidAt] = useState(() => new Date().toISOString().slice(0, 10));
-  const [paymentNote, setPaymentNote] = useState("");
-  const [recordingPayment, setRecordingPayment] = useState(false);
-  const [paymentEdit, setPaymentEdit] = useState<InvoicePaymentApi | null>(null);
-  const [editPayAmount, setEditPayAmount] = useState("");
-  const [editPayPaidAt, setEditPayPaidAt] = useState("");
-  const [editPayNote, setEditPayNote] = useState("");
-  const [updatingPayment, setUpdatingPayment] = useState(false);
-
   const resetInvoiceForm = () => {
     setEditingProformaId(null);
     setCustomerId("");
@@ -329,6 +313,7 @@ export default function Invoices({ mode }: InvoicesPageProps) {
       toast.error("Converted proformas cannot be edited.");
       return;
     }
+    setViewProformaId(null);
     setSubmitting(true);
     try {
       const res = await getProformaRequest(token, proforma.id);
@@ -356,16 +341,26 @@ export default function Invoices({ mode }: InvoicesPageProps) {
       }
 
       try {
-        const [proformasRes, invoicesRes, customersRes, carsRes, servicesRes, stocksRes] = await Promise.all([
-          listProformasRequest(token),
-          listInvoicesRequest(token),
+        const sharedRequests = [
           listCustomersRequest(token),
           listCarsRequest(token),
           listServicesRequest(token),
           listStocksRequest(token),
-        ]);
-        setProformaList(proformasRes.data);
-        setList(invoicesRes.data);
+        ] as const;
+        const docRequests =
+          mode === "proformas"
+            ? [listProformasRequest(token), ...sharedRequests]
+            : [listInvoicesRequest(token), ...sharedRequests];
+        const results = await Promise.all(docRequests);
+        if (mode === "proformas") {
+          setProformaList(results[0].data as ProformaApi[]);
+        } else {
+          setList(results[0].data as InvoiceApi[]);
+        }
+        const customersRes = results[1];
+        const carsRes = results[2];
+        const servicesRes = results[3];
+        const stocksRes = results[4];
         setCustomers(customersRes.data);
         setCars(carsRes.data);
         setServices(servicesRes.data);
@@ -382,7 +377,7 @@ export default function Invoices({ mode }: InvoicesPageProps) {
     };
 
     void loadData();
-  }, [token]);
+  }, [token, mode]);
 
   useEffect(() => {
     const loadCustomerOptions = async () => {
@@ -629,105 +624,6 @@ export default function Invoices({ mode }: InvoicesPageProps) {
       toast.success("Proforma deleted");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not delete proforma.");
-    }
-  };
-
-  const handlePaymentStatus = async (invoiceId: string | number, value: "unpaid" | "partial" | "paid") => {
-    if (!token) return;
-    try {
-      const response = await updateInvoicePaymentStatusRequest(token, invoiceId, value);
-      const patch = response.data;
-      setList((prev) =>
-        prev.map((invoice) =>
-          String(invoice.id) === String(invoiceId)
-            ? {
-                ...invoice,
-                payment_status: patch.payment_status,
-                amount_paid: patch.amount_paid ?? invoice.amount_paid,
-                amount_due: patch.amount_due ?? invoice.amount_due,
-                payments: patch.payments ?? invoice.payments,
-              }
-            : invoice,
-        ),
-      );
-      if (viewId && String(viewId) === String(invoiceId)) {
-        const detail = await getInvoiceRequest(token, invoiceId);
-        setViewingDetail(detail.data);
-      }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not update payment status.");
-    }
-  };
-
-  const handleRecordPayment = async () => {
-    if (!token || !viewing) return;
-    const amt = Number(paymentAmount.replace(/,/g, ".").trim());
-    if (!Number.isFinite(amt) || amt <= 0) {
-      toast.error("Enter a valid payment amount.");
-      return;
-    }
-    setRecordingPayment(true);
-    try {
-      const res = await recordInvoicePaymentRequest(token, viewing.id, {
-        amount: amt,
-        paid_at: paymentPaidAt || undefined,
-        note: paymentNote.trim() || undefined,
-      });
-      setList((prev) => prev.map((inv) => (String(inv.id) === String(viewing.id) ? res.data : inv)));
-      setViewingDetail(res.data);
-      setPaymentAmount("");
-      setPaymentNote("");
-      setPaymentPaidAt(new Date().toISOString().slice(0, 10));
-      toast.success("Payment recorded");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not record payment.");
-    } finally {
-      setRecordingPayment(false);
-    }
-  };
-
-  const openPaymentEditor = (p: InvoicePaymentApi) => {
-    setPaymentEdit(p);
-    setEditPayAmount(String(p.amount ?? ""));
-    const raw = p.paid_at != null && p.paid_at !== "" ? String(p.paid_at) : "";
-    setEditPayPaidAt(raw.length >= 10 ? raw.slice(0, 10) : "");
-    setEditPayNote(p.note ?? "");
-  };
-
-  const handleSavePaymentEdit = async () => {
-    if (!token || !viewing || !paymentEdit) return;
-    const amt = Number(editPayAmount.replace(/,/g, ".").trim());
-    if (!Number.isFinite(amt) || amt < 0.01) {
-      toast.error("Enter a valid payment amount (minimum 0.01).");
-      return;
-    }
-    setUpdatingPayment(true);
-    try {
-      const res = await updateInvoicePaymentRequest(token, viewing.id, paymentEdit.id, {
-        amount: amt,
-        paid_at: editPayPaidAt.trim() === "" ? null : editPayPaidAt.trim(),
-        note: editPayNote.trim() === "" ? null : editPayNote.trim(),
-      });
-      setList((prev) => prev.map((inv) => (String(inv.id) === String(viewing.id) ? res.data : inv)));
-      setViewingDetail(res.data);
-      setPaymentEdit(null);
-      toast.success("Payment updated");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not update payment.");
-    } finally {
-      setUpdatingPayment(false);
-    }
-  };
-
-  const handleDelete = async (invoiceId: string | number) => {
-    if (!token) return;
-    try {
-      await deleteInvoiceRequest(token, invoiceId);
-      setList((prev) => prev.filter((invoice) => String(invoice.id) !== String(invoiceId)));
-      if (viewId === String(invoiceId)) setViewId(null);
-      toast.success("Invoice deleted");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not delete invoice.");
     }
   };
 
@@ -1016,8 +912,8 @@ export default function Invoices({ mode }: InvoicesPageProps) {
         title={mode === "proformas" ? "Proformas" : "Invoices"}
         description={
           mode === "proformas"
-            ? "Create proforma quotes for customers. Convert to an official invoice after payment."
-            : "Official invoices created from paid proformas. Stock is deducted when marked paid."
+            ? "Create and edit draft proformas. Convert to an invoice after the customer pays."
+            : "Final invoices from converted proformas. View, print, or download only."
         }
         actions={
           mode === "proformas" ? (
@@ -1339,6 +1235,28 @@ export default function Invoices({ mode }: InvoicesPageProps) {
                               <span className="hidden sm:inline">PDF</span>
                             </Button>
                           </div>
+                          <div className="flex justify-end sm:hidden">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button size="icon" variant="ghost" aria-label="Open actions">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => setViewProformaId(String(proforma.id))}>View</DropdownMenuItem>
+                                {proforma.status === "draft" && (
+                                  <>
+                                    <DropdownMenuItem onClick={() => void openEditProformaDialog(proforma)}>Edit</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => openConvertDialog(proforma)}>Convert to invoice</DropdownMenuItem>
+                                    <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void handleDeleteProforma(proforma.id)}>
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                                <DropdownMenuItem onClick={() => downloadDocumentPdf(proforma)}>PDF</DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -1403,14 +1321,7 @@ export default function Invoices({ mode }: InvoicesPageProps) {
                     <TableCell className="hidden lg:table-cell text-right text-muted-foreground">{formatCurrency(paid)}</TableCell>
                     <TableCell className="hidden lg:table-cell text-right font-medium">{formatCurrency(due)}</TableCell>
                     <TableCell className="hidden sm:table-cell">
-                      <Select value={invoice.payment_status} onValueChange={(v) => void handlePaymentStatus(invoice.id, v as "unpaid" | "partial" | "paid")}>
-                        <SelectTrigger className="h-8 min-w-28"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="unpaid">Unpaid</SelectItem>
-                          <SelectItem value="partial">Partial</SelectItem>
-                          <SelectItem value="paid">Paid</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Badge className={paymentBadge(invoice.payment_status)}>{invoice.payment_status}</Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="hidden flex-wrap justify-end gap-1 sm:flex">
@@ -1423,9 +1334,6 @@ export default function Invoices({ mode }: InvoicesPageProps) {
                           <Download className="h-4 w-4 sm:mr-1" />
                           <span className="hidden sm:inline">PDF</span>
                         </Button>
-                        <Button size="icon" variant="ghost" onClick={() => void handleDelete(invoice.id)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
                       </div>
                       <div className="flex justify-end sm:hidden">
                         <DropdownMenu>
@@ -1437,7 +1345,6 @@ export default function Invoices({ mode }: InvoicesPageProps) {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => setViewId(String(invoice.id))}>View</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => downloadDocumentPdf(invoice)}>PDF</DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void handleDelete(invoice.id)}>Delete</DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -1517,7 +1424,14 @@ export default function Invoices({ mode }: InvoicesPageProps) {
               <div className="flex flex-wrap justify-end gap-2">
                 {viewingProforma.status === "draft" && (
                   <>
-                    <Button variant="outline" onClick={() => void openEditProformaDialog(viewingProforma)}>Edit proforma</Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        void openEditProformaDialog(viewingProforma);
+                      }}
+                    >
+                      <Pencil className="mr-2 h-4 w-4" /> Edit proforma
+                    </Button>
                     <Button className="bg-gradient-primary" onClick={() => openConvertDialog(viewingProforma)}>
                       <FileCheck className="mr-2 h-4 w-4" /> Convert to invoice
                     </Button>
@@ -1590,9 +1504,13 @@ export default function Invoices({ mode }: InvoicesPageProps) {
         </DialogContent>
       </Dialog>
 
+      {mode === "invoices" && (
       <Dialog open={!!viewId} onOpenChange={(value) => !value && setViewId(null)}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>Invoice {viewing?.invoice_number}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Invoice {viewing?.invoice_number}</DialogTitle>
+            <p className="text-sm text-muted-foreground">Final document — read only</p>
+          </DialogHeader>
           {viewLoading && (
             <div className="flex justify-center py-8 text-muted-foreground">
               <Loader2 className="h-6 w-6 animate-spin" />
@@ -1631,59 +1549,15 @@ export default function Invoices({ mode }: InvoicesPageProps) {
                 </div>
               </div>
 
-              <div className="space-y-2 rounded-md border p-3">
-                <Label className="text-sm font-semibold">Update payment status</Label>
-                <p className="text-xs text-muted-foreground">
-                  Updates the status label on the server. Amount paid and amount due follow the payment entries below—use Record payment to add installments, or Edit on a row to change an existing payment.
-                </p>
-                <Select
-                  value={viewing.payment_status}
-                  onValueChange={(v) => void handlePaymentStatus(viewing.id, v as "unpaid" | "partial" | "paid")}
-                >
-                  <SelectTrigger className="max-w-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="unpaid">Unpaid</SelectItem>
-                    <SelectItem value="partial">Partial</SelectItem>
-                    <SelectItem value="paid">Paid</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2 rounded-md border p-3">
-                <Label className="text-sm font-semibold">Record payment</Label>
-                <p className="text-xs text-muted-foreground">
-                  Each save adds an installment and refreshes amount paid and amount due from the server.
-                </p>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  <Input
-                    type="text"
-                    inputMode="decimal"
-                    placeholder="Amount"
-                    value={paymentAmount}
-                    onChange={(e) => setPaymentAmount(e.target.value)}
-                  />
-                  <Input type="date" value={paymentPaidAt} onChange={(e) => setPaymentPaidAt(e.target.value)} />
-                  <Input placeholder="Note (optional)" value={paymentNote} onChange={(e) => setPaymentNote(e.target.value)} />
-                </div>
-                <Button type="button" size="sm" className="bg-gradient-primary" disabled={recordingPayment || invoiceAmountDue(viewing) <= 0} onClick={() => void handleRecordPayment()}>
-                  {recordingPayment ? "Recording…" : "Add payment"}
-                </Button>
-              </div>
-
               {viewing.payments && viewing.payments.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-sm font-medium">Payments</p>
+                  <p className="text-sm font-medium">Payments recorded</p>
                   <ul className="max-h-48 space-y-2 overflow-y-auto text-sm">
                     {viewing.payments.map((p) => (
-                      <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2">
-                        <div className="flex min-w-0 flex-1 flex-wrap gap-x-3 gap-y-1">
-                          <span className="text-muted-foreground">{p.paid_at ? formatDate(String(p.paid_at)) : "—"}</span>
-                          <span className="font-mono font-semibold">{formatCurrency(p.amount)}</span>
-                          <span className="truncate text-muted-foreground">{p.note ?? "—"}</span>
-                        </div>
-                        <Button type="button" variant="outline" size="sm" onClick={() => openPaymentEditor(p)}>
-                          Edit
-                        </Button>
+                      <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border bg-muted/30 px-3 py-2">
+                        <span className="text-muted-foreground">{p.paid_at ? formatDate(String(p.paid_at)) : "—"}</span>
+                        <span className="font-mono font-semibold">{formatCurrency(p.amount)}</span>
+                        <span className="truncate text-muted-foreground">{p.note ?? "—"}</span>
                       </li>
                     ))}
                   </ul>
@@ -1724,49 +1598,7 @@ export default function Invoices({ mode }: InvoicesPageProps) {
           )}
         </DialogContent>
       </Dialog>
-
-      <Dialog
-        open={!!paymentEdit}
-        onOpenChange={(open) => {
-          if (!open) setPaymentEdit(null);
-        }}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Edit payment</DialogTitle>
-          </DialogHeader>
-          {paymentEdit && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Amount</Label>
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  value={editPayAmount}
-                  onChange={(e) => setEditPayAmount(e.target.value)}
-                  placeholder="0"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Paid on</Label>
-                <Input type="date" value={editPayPaidAt} onChange={(e) => setEditPayPaidAt(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Note</Label>
-                <Input value={editPayNote} onChange={(e) => setEditPayNote(e.target.value)} placeholder="Optional" />
-              </div>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setPaymentEdit(null)} disabled={updatingPayment}>
-                  Cancel
-                </Button>
-                <Button type="button" className="bg-gradient-primary" disabled={updatingPayment} onClick={() => void handleSavePaymentEdit()}>
-                  {updatingPayment ? "Saving…" : "Save changes"}
-                </Button>
-              </DialogFooter>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      )}
     </div>
   );
 }
