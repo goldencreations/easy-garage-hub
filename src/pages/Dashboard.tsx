@@ -25,6 +25,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { useAuth } from "@/contexts/AuthContext";
+import { isSuperAdminUser } from "@/lib/auth-roles";
 import { formatCurrency } from "@/lib/mock-data";
 import { adminStatsRequest, listCarsRequest, listServicesRequest, type AdminStatsApi, type AdminStatsFilter } from "@/lib/api";
 import { formatDate } from "@/lib/date";
@@ -47,7 +48,7 @@ const defaultStats: AdminStatsApi = {
 
 export default function Dashboard() {
   const { token, user } = useAuth();
-  const isSuperAdmin = user?.role === "super_admin";
+  const isSuperAdmin = isSuperAdminUser(user);
   const [filter, setFilter] = useState<AdminStatsFilter>("monthly");
   const [stats, setStats] = useState<AdminStatsApi>(defaultStats);
   const [loading, setLoading] = useState(true);

@@ -27,6 +27,7 @@ import {
   type AdminUser,
 } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { isSuperAdminUser } from "@/lib/auth-roles";
 import { toast } from "sonner";
 
 type UiUser = {
@@ -52,7 +53,7 @@ const toUiUser = (u: AdminUser): UiUser => ({
 
 export default function Users() {
   const { token, user: currentUser } = useAuth();
-  const canManageUsers = currentUser?.role === "super_admin";
+  const canManageUsers = isSuperAdminUser(currentUser);
   const [list, setList] = useState<UiUser[]>([]);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);

@@ -18,6 +18,8 @@ export type AuthUser = {
   name: string;
   email: string;
   role: string;
+  /** Some API responses flag super admin explicitly instead of role slug. */
+  is_super_admin?: boolean;
 };
 
 export type AuthPayload = {

@@ -43,6 +43,7 @@ import {
   type StockApi,
 } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { isProformaConverted, isProformaDraft, isSuperAdminUser } from "@/lib/auth-roles";
 import { formatCurrency } from "@/lib/mock-data";
 import { formatDate } from "@/lib/date";
 import { toast } from "sonner";
@@ -254,9 +255,9 @@ type InvoicesPageProps = {
 export default function Invoices({ mode }: InvoicesPageProps) {
   const { token, user } = useAuth();
   const navigate = useNavigate();
-  const isSuperAdmin = user?.role === "super_admin";
-  const canEditProforma = (proforma: ProformaApi) => proforma.status === "draft" || isSuperAdmin;
-  const canDeleteProforma = (proforma: ProformaApi) => proforma.status === "draft" || isSuperAdmin;
+  const isSuperAdmin = isSuperAdminUser(user);
+  const canEditProforma = (proforma: ProformaApi) => isProformaDraft(proforma) || isSuperAdmin;
+  const canDeleteProforma = (proforma: ProformaApi) => isProformaDraft(proforma) || isSuperAdmin;
   const [proformaList, setProformaList] = useState<ProformaApi[]>([]);
   const [list, setList] = useState<InvoiceApi[]>([]);
   const [customers, setCustomers] = useState<CustomerApi[]>([]);
@@ -586,7 +587,7 @@ export default function Invoices({ mode }: InvoicesPageProps) {
   };
 
   const openConvertDialog = (proforma: ProformaApi) => {
-    if (proforma.status === "converted") {
+    if (isProformaConverted(proforma)) {
       toast.info("This proforma is already converted.");
       return;
     }
@@ -945,12 +946,12 @@ export default function Invoices({ mode }: InvoicesPageProps) {
                 <DialogHeader>
                   <DialogTitle>
                     {editingProformaId
-                      ? editingProforma?.status === "converted"
+                      ? editingProforma && isProformaConverted(editingProforma)
                         ? "Edit converted proforma"
                         : "Edit Proforma"
                       : "Create New Proforma"}
                   </DialogTitle>
-                  {editingProforma?.status === "converted" && isSuperAdmin && (
+                  {editingProforma && isProformaConverted(editingProforma) && isSuperAdmin && (
                     <p className="text-sm text-amber-600 dark:text-amber-400">
                       Super admin only — this proforma is already linked to an invoice.
                     </p>
@@ -1226,8 +1227,8 @@ export default function Invoices({ mode }: InvoicesPageProps) {
                         </TableCell>
                         <TableCell className="font-bold">{formatCurrency(proforma.total)}</TableCell>
                         <TableCell>
-                          <Badge variant={proforma.status === "converted" ? "secondary" : "outline"}>
-                            {proforma.status === "converted" ? "Converted" : "Draft"}
+                          <Badge variant={isProformaConverted(proforma) ? "secondary" : "outline"}>
+                            {isProformaConverted(proforma) ? "Converted" : "Draft"}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right min-w-[11rem]">
@@ -1238,7 +1239,7 @@ export default function Invoices({ mode }: InvoicesPageProps) {
                                 <span className="hidden sm:inline">Edit</span>
                               </Button>
                             )}
-                            {proforma.status === "draft" && (
+                            {isProformaDraft(proforma) && (
                               <Button size="sm" variant="ghost" className="shrink-0" title="Convert to invoice" onClick={() => openConvertDialog(proforma)}>
                                 <FileCheck className="h-4 w-4 sm:mr-1" />
                                 <span className="hidden sm:inline">To invoice</span>
@@ -1389,8 +1390,8 @@ export default function Invoices({ mode }: InvoicesPageProps) {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant={viewingProforma.status === "converted" ? "secondary" : "outline"}>
-                  {viewingProforma.status === "converted" ? "Converted" : "Draft"}
+                <Badge variant={isProformaConverted(viewingProforma) ? "secondary" : "outline"}>
+                  {isProformaConverted(viewingProforma) ? "Converted" : "Draft"}
                 </Badge>
                 {viewingProforma.invoice && (
                   <span className="text-sm text-muted-foreground">
@@ -1437,7 +1438,7 @@ export default function Invoices({ mode }: InvoicesPageProps) {
                     <Pencil className="mr-2 h-4 w-4" /> Edit proforma
                   </Button>
                 )}
-                {viewingProforma.status === "draft" && (
+                {isProformaDraft(viewingProforma) && (
                   <Button className="bg-gradient-primary" onClick={() => openConvertDialog(viewingProforma)}>
                     <FileCheck className="mr-2 h-4 w-4" /> Convert to invoice
                   </Button>
