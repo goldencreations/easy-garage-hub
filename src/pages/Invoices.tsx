@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Download, Eye, FileCheck, Loader2, Plus, Trash2, MoreHorizontal, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataCard } from "@/components/DataCard";
@@ -252,6 +253,10 @@ type InvoicesPageProps = {
 
 export default function Invoices({ mode }: InvoicesPageProps) {
   const { token, user } = useAuth();
+  const navigate = useNavigate();
+  const isSuperAdmin = user?.role === "super_admin";
+  const canEditProforma = (proforma: ProformaApi) => proforma.status === "draft" || isSuperAdmin;
+  const canDeleteProforma = (proforma: ProformaApi) => proforma.status === "draft" || isSuperAdmin;
   const [proformaList, setProformaList] = useState<ProformaApi[]>([]);
   const [list, setList] = useState<InvoiceApi[]>([]);
   const [customers, setCustomers] = useState<CustomerApi[]>([]);
@@ -309,7 +314,7 @@ export default function Invoices({ mode }: InvoicesPageProps) {
 
   const openEditProformaDialog = async (proforma: ProformaApi) => {
     if (!token) return;
-    if (proforma.status === "converted") {
+    if (!canEditProforma(proforma)) {
       toast.error("Converted proformas cannot be edited.");
       return;
     }
@@ -514,6 +519,11 @@ export default function Invoices({ mode }: InvoicesPageProps) {
 
   const draftTotalPreview = useMemo(() => computeDraftTotal(draftLines, stockById), [draftLines, stockById]);
 
+  const editingProforma = useMemo(
+    () => (editingProformaId ? proformaList.find((pf) => String(pf.id) === editingProformaId) ?? null : null),
+    [editingProformaId, proformaList],
+  );
+
   const viewing = viewId ? (viewingDetail ?? list.find((invoice) => String(invoice.id) === viewId) ?? null) : null;
   const viewCustomer = viewing ? customers.find((c) => String(c.id) === String(viewing.customer_id)) : null;
   const viewCar = viewing ? cars.find((c) => String(c.id) === String(viewing.car_id)) : null;
@@ -606,8 +616,8 @@ export default function Invoices({ mode }: InvoicesPageProps) {
         setViewingProformaDetail(detail.data);
       }
       setConvertTarget(null);
-      setActiveTab("invoices");
       toast.success("Proforma converted to invoice");
+      navigate("/invoices");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not convert proforma.");
     } finally {
@@ -933,7 +943,18 @@ export default function Invoices({ mode }: InvoicesPageProps) {
               </Button>
               <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>{editingProformaId ? "Edit Proforma" : "Create New Proforma"}</DialogTitle>
+                  <DialogTitle>
+                    {editingProformaId
+                      ? editingProforma?.status === "converted"
+                        ? "Edit converted proforma"
+                        : "Edit Proforma"
+                      : "Create New Proforma"}
+                  </DialogTitle>
+                  {editingProforma?.status === "converted" && isSuperAdmin && (
+                    <p className="text-sm text-amber-600 dark:text-amber-400">
+                      Super admin only — this proforma is already linked to an invoice.
+                    </p>
+                  )}
                 </DialogHeader>
                 <form className="space-y-4" onSubmit={handleProformaSubmit}>
                   <div className="space-y-2">
@@ -1215,20 +1236,22 @@ export default function Invoices({ mode }: InvoicesPageProps) {
                               <Eye className="h-4 w-4 sm:mr-1" />
                               <span className="hidden sm:inline">View</span>
                             </Button>
+                            {canEditProforma(proforma) && (
+                              <Button size="sm" variant="ghost" onClick={() => void openEditProformaDialog(proforma)}>
+                                <Pencil className="h-4 w-4 sm:mr-1" />
+                                <span className="hidden sm:inline">Edit</span>
+                              </Button>
+                            )}
                             {proforma.status === "draft" && (
-                              <>
-                                <Button size="sm" variant="ghost" onClick={() => void openEditProformaDialog(proforma)}>
-                                  <Pencil className="h-4 w-4 sm:mr-1" />
-                                  <span className="hidden sm:inline">Edit</span>
-                                </Button>
-                                <Button size="sm" variant="ghost" title="Convert to invoice" onClick={() => openConvertDialog(proforma)}>
-                                  <FileCheck className="h-4 w-4 sm:mr-1" />
-                                  <span className="hidden sm:inline">To invoice</span>
-                                </Button>
-                                <Button size="icon" variant="ghost" onClick={() => void handleDeleteProforma(proforma.id)}>
-                                  <Trash2 className="h-4 w-4 text-destructive" />
-                                </Button>
-                              </>
+                              <Button size="sm" variant="ghost" title="Convert to invoice" onClick={() => openConvertDialog(proforma)}>
+                                <FileCheck className="h-4 w-4 sm:mr-1" />
+                                <span className="hidden sm:inline">To invoice</span>
+                              </Button>
+                            )}
+                            {canDeleteProforma(proforma) && (
+                              <Button size="icon" variant="ghost" onClick={() => void handleDeleteProforma(proforma.id)}>
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
                             )}
                             <Button size="sm" variant="ghost" onClick={() => downloadDocumentPdf(proforma)}>
                               <Download className="h-4 w-4 sm:mr-1" />
@@ -1244,14 +1267,16 @@ export default function Invoices({ mode }: InvoicesPageProps) {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={() => setViewProformaId(String(proforma.id))}>View</DropdownMenuItem>
+                                {canEditProforma(proforma) && (
+                                  <DropdownMenuItem onClick={() => void openEditProformaDialog(proforma)}>Edit</DropdownMenuItem>
+                                )}
                                 {proforma.status === "draft" && (
-                                  <>
-                                    <DropdownMenuItem onClick={() => void openEditProformaDialog(proforma)}>Edit</DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => openConvertDialog(proforma)}>Convert to invoice</DropdownMenuItem>
-                                    <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void handleDeleteProforma(proforma.id)}>
-                                      Delete
-                                    </DropdownMenuItem>
-                                  </>
+                                  <DropdownMenuItem onClick={() => openConvertDialog(proforma)}>Convert to invoice</DropdownMenuItem>
+                                )}
+                                {canDeleteProforma(proforma) && (
+                                  <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void handleDeleteProforma(proforma.id)}>
+                                    Delete
+                                  </DropdownMenuItem>
                                 )}
                                 <DropdownMenuItem onClick={() => downloadDocumentPdf(proforma)}>PDF</DropdownMenuItem>
                               </DropdownMenuContent>
@@ -1422,20 +1447,29 @@ export default function Invoices({ mode }: InvoicesPageProps) {
                 </TableBody>
               </Table>
               <div className="flex flex-wrap justify-end gap-2">
+                {canEditProforma(viewingProforma) && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      void openEditProformaDialog(viewingProforma);
+                    }}
+                  >
+                    <Pencil className="mr-2 h-4 w-4" /> Edit proforma
+                  </Button>
+                )}
                 {viewingProforma.status === "draft" && (
-                  <>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        void openEditProformaDialog(viewingProforma);
-                      }}
-                    >
-                      <Pencil className="mr-2 h-4 w-4" /> Edit proforma
-                    </Button>
-                    <Button className="bg-gradient-primary" onClick={() => openConvertDialog(viewingProforma)}>
-                      <FileCheck className="mr-2 h-4 w-4" /> Convert to invoice
-                    </Button>
-                  </>
+                  <Button className="bg-gradient-primary" onClick={() => openConvertDialog(viewingProforma)}>
+                    <FileCheck className="mr-2 h-4 w-4" /> Convert to invoice
+                  </Button>
+                )}
+                {canDeleteProforma(viewingProforma) && (
+                  <Button
+                    variant="outline"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => void handleDeleteProforma(viewingProforma.id)}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" /> Delete
+                  </Button>
                 )}
                 <Button variant="outline" onClick={() => openPrintableDocument(viewingProforma)}>Print</Button>
                 <Button className="bg-gradient-primary" onClick={() => downloadDocumentPdf(viewingProforma)}>
