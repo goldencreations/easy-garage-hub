@@ -1230,57 +1230,33 @@ export default function Invoices({ mode }: InvoicesPageProps) {
                             {proforma.status === "converted" ? "Converted" : "Draft"}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right">
-                          <div className="hidden flex-wrap justify-end gap-1 sm:flex">
-                            <Button size="sm" variant="ghost" onClick={() => setViewProformaId(String(proforma.id))}>
-                              <Eye className="h-4 w-4 sm:mr-1" />
-                              <span className="hidden sm:inline">View</span>
-                            </Button>
+                        <TableCell className="text-right min-w-[11rem]">
+                          <div className="flex flex-wrap justify-end gap-1">
                             {canEditProforma(proforma) && (
-                              <Button size="sm" variant="ghost" onClick={() => void openEditProformaDialog(proforma)}>
+                              <Button size="sm" variant="ghost" className="shrink-0" onClick={() => void openEditProformaDialog(proforma)}>
                                 <Pencil className="h-4 w-4 sm:mr-1" />
                                 <span className="hidden sm:inline">Edit</span>
                               </Button>
                             )}
                             {proforma.status === "draft" && (
-                              <Button size="sm" variant="ghost" title="Convert to invoice" onClick={() => openConvertDialog(proforma)}>
+                              <Button size="sm" variant="ghost" className="shrink-0" title="Convert to invoice" onClick={() => openConvertDialog(proforma)}>
                                 <FileCheck className="h-4 w-4 sm:mr-1" />
                                 <span className="hidden sm:inline">To invoice</span>
                               </Button>
                             )}
                             {canDeleteProforma(proforma) && (
-                              <Button size="icon" variant="ghost" onClick={() => void handleDeleteProforma(proforma.id)}>
+                              <Button size="icon" variant="ghost" className="shrink-0" onClick={() => void handleDeleteProforma(proforma.id)}>
                                 <Trash2 className="h-4 w-4 text-destructive" />
                               </Button>
                             )}
-                            <Button size="sm" variant="ghost" onClick={() => downloadDocumentPdf(proforma)}>
+                            <Button size="sm" variant="ghost" className="shrink-0" onClick={() => setViewProformaId(String(proforma.id))}>
+                              <Eye className="h-4 w-4 sm:mr-1" />
+                              <span className="hidden sm:inline">View</span>
+                            </Button>
+                            <Button size="sm" variant="ghost" className="shrink-0" onClick={() => downloadDocumentPdf(proforma)}>
                               <Download className="h-4 w-4 sm:mr-1" />
                               <span className="hidden sm:inline">PDF</span>
                             </Button>
-                          </div>
-                          <div className="flex justify-end sm:hidden">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button size="icon" variant="ghost" aria-label="Open actions">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => setViewProformaId(String(proforma.id))}>View</DropdownMenuItem>
-                                {canEditProforma(proforma) && (
-                                  <DropdownMenuItem onClick={() => void openEditProformaDialog(proforma)}>Edit</DropdownMenuItem>
-                                )}
-                                {proforma.status === "draft" && (
-                                  <DropdownMenuItem onClick={() => openConvertDialog(proforma)}>Convert to invoice</DropdownMenuItem>
-                                )}
-                                {canDeleteProforma(proforma) && (
-                                  <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void handleDeleteProforma(proforma.id)}>
-                                    Delete
-                                  </DropdownMenuItem>
-                                )}
-                                <DropdownMenuItem onClick={() => downloadDocumentPdf(proforma)}>PDF</DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1447,6 +1423,10 @@ export default function Invoices({ mode }: InvoicesPageProps) {
                 </TableBody>
               </Table>
               <div className="flex flex-wrap justify-end gap-2">
+                <Button variant="outline" onClick={() => openPrintableDocument(viewingProforma)}>Print</Button>
+                <Button variant="outline" onClick={() => downloadDocumentPdf(viewingProforma)}>
+                  <Download className="mr-2 h-4 w-4" /> Download PDF
+                </Button>
                 {canEditProforma(viewingProforma) && (
                   <Button
                     variant="outline"
@@ -1471,10 +1451,6 @@ export default function Invoices({ mode }: InvoicesPageProps) {
                     <Trash2 className="mr-2 h-4 w-4" /> Delete
                   </Button>
                 )}
-                <Button variant="outline" onClick={() => openPrintableDocument(viewingProforma)}>Print</Button>
-                <Button className="bg-gradient-primary" onClick={() => downloadDocumentPdf(viewingProforma)}>
-                  <Download className="mr-2 h-4 w-4" /> Download PDF
-                </Button>
               </div>
             </div>
           )}
