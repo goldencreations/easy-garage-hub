@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/AuthContext";
 import { buildInvoicePdf, downloadInvoicePdf } from "@/lib/invoice-pdf";
+import { getInvoiceVatPreference } from "@/lib/invoice-vat";
 import { formatCurrency, type Car as MockCar, type Customer as MockCustomer, type Invoice as MockInvoice } from "@/lib/mock-data";
 import { formatDate } from "@/lib/date";
 import { customerDetailsRequest, type CarApi, type InvoiceApi } from "@/lib/api";
@@ -137,7 +138,10 @@ export default function CustomerDetail() {
         carIds: cars.map((item) => String(item.id)),
         createdAt: "",
       };
-      return buildInvoicePdf(toMockInvoice(invoice), mockCustomer, mockCar, regeneratedAt ? { regeneratedAt } : undefined);
+      return buildInvoicePdf(toMockInvoice(invoice), mockCustomer, mockCar, {
+        ...(regeneratedAt ? { regeneratedAt } : {}),
+        vatEnabled: getInvoiceVatPreference(invoice.proforma_id ?? invoice.id),
+      });
     },
     [carById, cars, customer],
   );

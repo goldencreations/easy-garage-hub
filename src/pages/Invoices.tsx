@@ -46,6 +46,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { isProformaConverted, isProformaDraft, isSuperAdminUser } from "@/lib/auth-roles";
 import { formatCurrency } from "@/lib/mock-data";
 import { formatDate } from "@/lib/date";
+import { getInvoiceVatPreference, invoiceAmounts } from "@/lib/invoice-vat";
 import { toast } from "sonner";
 
 const GARAGE_NAME = "AZIZI AUTOMOTIVE GARAGE";
@@ -121,6 +122,14 @@ function invoiceAmountDue(invoice: InvoiceApi): number {
   }
   const total = Number(invoice.total) || 0;
   return Math.max(0, total - invoiceAmountPaid(invoice));
+}
+
+function invoicePaymentSummary(invoice: InvoiceApi, vat: number) {
+  const isPaid = invoice.payment_status === "paid";
+  return {
+    amountPaid: isPaid ? (Number(invoice.total) || 0) + vat : invoiceAmountPaid(invoice),
+    balanceDue: isPaid ? 0 : invoiceAmountDue(invoice) + vat,
+  };
 }
 
 function draftLinesFromInvoiceItems(items: InvoiceItemApi[]): DraftLine[] {
@@ -290,6 +299,8 @@ export default function Invoices({ mode }: InvoicesPageProps) {
   const [convertPaymentStatus, setConvertPaymentStatus] = useState<"unpaid" | "partial" | "paid">("paid");
   const [convertDate, setConvertDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [converting, setConverting] = useState(false);
+  const [invoiceDownloadTarget, setInvoiceDownloadTarget] = useState<InvoiceApi | null>(null);
+  const [invoiceDownloadVat, setInvoiceDownloadVat] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -596,6 +607,11 @@ export default function Invoices({ mode }: InvoicesPageProps) {
     setConvertDate(new Date().toISOString().slice(0, 10));
   };
 
+  const openInvoiceDownloadDialog = (invoice: InvoiceApi) => {
+    setInvoiceDownloadTarget(invoice);
+    setInvoiceDownloadVat(getInvoiceVatPreference(invoice.proforma_id ?? invoice.id));
+  };
+
   const handleConvertToInvoice = async () => {
     if (!token || !convertTarget) return;
     setConverting(true);
@@ -659,8 +675,11 @@ export default function Invoices({ mode }: InvoicesPageProps) {
     const refLabel = "proforma_number" in doc ? "Proforma REF" : "Invoice REF";
     const number = docNumber(doc);
     const invoice = "invoice_number" in doc ? doc : null;
-    const amountPaid = invoice ? invoiceAmountPaid(invoice) : 0;
-    const balanceDue = invoice ? invoiceAmountDue(invoice) : Number(doc.total) || 0;
+    const vatEnabledForDoc = getInvoiceVatPreference("proforma_number" in doc ? doc.id : doc.proforma_id ?? doc.id);
+    const amounts = invoiceAmounts(Number(doc.total) || 0, vatEnabledForDoc);
+    const paymentSummary = invoice ? invoicePaymentSummary(invoice, amounts.vat) : null;
+    const amountPaid = paymentSummary?.amountPaid ?? 0;
+    const balanceDue = paymentSummary?.balanceDue ?? amounts.total;
     const printedAt = new Date();
     const rows = doc.items
       .map(
@@ -766,8 +785,9 @@ export default function Invoices({ mode }: InvoicesPageProps) {
               </ul>
             </div>
             <div class="summary">
-              <div class="summary-row"><span>Subtotal</span><span>${formatTzs(doc.total)}</span></div>
-              <div class="summary-row"><span>Total Amount</span><span>${formatTzs(doc.total)} TZS</span></div>
+                <div class="summary-row"><span>Subtotal</span><span>${formatTzs(amounts.subtotal)} TZS</span></div>
+                ${vatEnabledForDoc ? `<div class="summary-row"><span>VAT (18%)</span><span>${formatTzs(amounts.vat)} TZS</span></div>` : ""}
+                <div class="summary-row"><span>Total Amount</span><span>${formatTzs(amounts.total)} TZS</span></div>
               ${invoice ? `<div class="summary-row"><span>Amount Paid</span><span>${formatTzs(amountPaid)}</span></div>
               <div class="summary-row"><span>Balance Due</span><span>${formatTzs(balanceDue)}</span></div>` : ""}
             </div>
@@ -780,15 +800,18 @@ export default function Invoices({ mode }: InvoicesPageProps) {
     printWindow.print();
   };
 
-  const downloadDocumentPdf = async (billable: BillableDoc) => {
+  const downloadDocumentPdf = async (billable: BillableDoc, vatEnabledOverride?: boolean) => {
     const customer = customers.find((c) => String(c.id) === String(billable.customer_id));
     const car = cars.find((c) => String(c.id) === String(billable.car_id));
     const title = docTitle(billable).toUpperCase();
     const refLabel = "proforma_number" in billable ? "Proforma REF" : "Invoice REF";
     const number = docNumber(billable);
     const invoice = "invoice_number" in billable ? billable : null;
-    const amountPaid = invoice ? invoiceAmountPaid(invoice) : 0;
-    const balanceDue = invoice ? invoiceAmountDue(invoice) : Number(billable.total) || 0;
+    const vatEnabledForDoc = vatEnabledOverride ?? getInvoiceVatPreference("proforma_number" in billable ? billable.id : billable.proforma_id ?? billable.id);
+    const amounts = invoiceAmounts(Number(billable.total) || 0, vatEnabledForDoc);
+    const paymentSummary = invoice ? invoicePaymentSummary(invoice, amounts.vat) : null;
+    const amountPaid = paymentSummary?.amountPaid ?? 0;
+    const balanceDue = paymentSummary?.balanceDue ?? amounts.total;
     const printedAt = new Date();
     const logoDataUrl = await loadLogoDataUrl();
 
@@ -897,14 +920,16 @@ export default function Invoices({ mode }: InvoicesPageProps) {
     doc.setDrawColor(0, 0, 0);
     const summaryRows = invoice
       ? ([
-          ["Subtotal", formatTzs(billable.total)],
-          ["Total Amount", `${formatTzs(billable.total)} TZS`],
+          ["Subtotal", `${formatTzs(amounts.subtotal)} TZS`],
+          ...(vatEnabledForDoc ? [["VAT (18%)", `${formatTzs(amounts.vat)} TZS`] as const] : []),
+          ["Total Amount", `${formatTzs(amounts.total)} TZS`],
           ["Amount Paid", formatTzs(amountPaid)],
           ["Balance Due", formatTzs(balanceDue)],
         ] as const)
       : ([
-          ["Subtotal", formatTzs(billable.total)],
-          ["Total Amount", `${formatTzs(billable.total)} TZS`],
+          ["Subtotal", `${formatTzs(amounts.subtotal)} TZS`],
+          ...(vatEnabledForDoc ? [["VAT (18%)", `${formatTzs(amounts.vat)} TZS`] as const] : []),
+          ["Total Amount", `${formatTzs(amounts.total)} TZS`],
         ] as const);
     doc.rect(boxX, boxY, boxW, rowH * summaryRows.length + 2);
     summaryRows.forEach(([label, value], idx) => {
@@ -1167,7 +1192,7 @@ export default function Invoices({ mode }: InvoicesPageProps) {
                   </div>
 
                   <div className="rounded-lg border bg-muted/40 p-4 flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-sm font-medium">Estimated total (preview)</span>
+                    <span className="text-sm font-medium">Estimated subtotal (preview)</span>
                     <span className="text-xl font-bold text-primary">{formatCurrency(draftTotalPreview)}</span>
                   </div>
 
@@ -1332,7 +1357,7 @@ export default function Invoices({ mode }: InvoicesPageProps) {
                           <Eye className="h-4 w-4 sm:mr-1" />
                           <span className="hidden sm:inline">View</span>
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => downloadDocumentPdf(invoice)}>
+                        <Button size="sm" variant="ghost" onClick={() => openInvoiceDownloadDialog(invoice)}>
                           <Download className="h-4 w-4 sm:mr-1" />
                           <span className="hidden sm:inline">PDF</span>
                         </Button>
@@ -1346,7 +1371,7 @@ export default function Invoices({ mode }: InvoicesPageProps) {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => setViewId(String(invoice.id))}>View</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => downloadDocumentPdf(invoice)}>PDF</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openInvoiceDownloadDialog(invoice)}>PDF</DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -1515,6 +1540,47 @@ export default function Invoices({ mode }: InvoicesPageProps) {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!invoiceDownloadTarget} onOpenChange={(open) => !open && setInvoiceDownloadTarget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Download invoice PDF</DialogTitle>
+          </DialogHeader>
+          {invoiceDownloadTarget && (() => {
+            const amounts = invoiceAmounts(Number(invoiceDownloadTarget.total) || 0, invoiceDownloadVat);
+            return (
+              <div className="space-y-4">
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={invoiceDownloadVat}
+                    onChange={(e) => setInvoiceDownloadVat(e.target.checked)}
+                  />
+                  Add VAT (18%)
+                </label>
+                <div className="rounded-lg border bg-muted/40 p-4 space-y-2 text-sm">
+                  <div className="flex justify-between gap-2"><span>Subtotal</span><span>{formatTzs(amounts.subtotal)} TZS</span></div>
+                  {invoiceDownloadVat && <div className="flex justify-between gap-2"><span>VAT (18%)</span><span>{formatTzs(amounts.vat)} TZS</span></div>}
+                  <div className="flex justify-between gap-2 border-t pt-2 font-bold"><span>Total</span><span className="text-primary">{formatTzs(amounts.total)} TZS</span></div>
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setInvoiceDownloadTarget(null)}>Cancel</Button>
+                  <Button
+                    type="button"
+                    className="bg-gradient-primary"
+                    onClick={() => {
+                      void downloadDocumentPdf(invoiceDownloadTarget, invoiceDownloadVat);
+                      setInvoiceDownloadTarget(null);
+                    }}
+                  >
+                    <Download className="mr-2 h-4 w-4" /> Download PDF
+                  </Button>
+                </DialogFooter>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
       {mode === "invoices" && (
       <Dialog open={!!viewId} onOpenChange={(value) => !value && setViewId(null)}>
         <DialogContent className="max-w-2xl">
@@ -1601,7 +1667,7 @@ export default function Invoices({ mode }: InvoicesPageProps) {
               </Table>
               <div className="flex flex-wrap justify-end gap-2">
                 <Button variant="outline" onClick={() => openPrintableDocument(viewing)}>Print</Button>
-                <Button className="bg-gradient-primary" onClick={() => downloadDocumentPdf(viewing)}>
+                <Button className="bg-gradient-primary" onClick={() => openInvoiceDownloadDialog(viewing)}>
                   <Download className="mr-2 h-4 w-4" /> Download PDF
                 </Button>
               </div>

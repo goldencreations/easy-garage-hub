@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import type { Invoice, Customer, Car } from "./mock-data";
+import { invoiceAmounts } from "./invoice-vat";
 const GARAGE_NAME = "AZIZI AUTOMOTIVE GARAGE";
 const GARAGE_PHONE = "+255677401259";
 const GARAGE_EMAIL = "aziziautomotivegarage1@gmail.com";
@@ -38,11 +39,12 @@ export async function buildInvoicePdf(
   invoice: Invoice,
   customer: Customer,
   car: Car | undefined,
-  options?: { regeneratedAt?: Date },
+  options?: { regeneratedAt?: Date; vatEnabled?: boolean },
 ): Promise<Blob> {
   const logoDataUrl = await loadLogoDataUrl();
-  const amountPaid = invoice.paid ? Number(invoice.total) || 0 : 0;
-  const balanceDue = Math.max(0, (Number(invoice.total) || 0) - amountPaid);
+  const amounts = invoiceAmounts(Number(invoice.total) || 0, options?.vatEnabled ?? false);
+  const amountPaid = invoice.paid ? amounts.total : 0;
+  const balanceDue = invoice.paid ? 0 : amounts.subtotal + amounts.vat;
   const printedAt = options?.regeneratedAt ?? new Date();
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   let y = 12;
@@ -146,10 +148,11 @@ export async function buildInvoicePdf(
   const boxW = 66;
   const rowH = 7;
   doc.setDrawColor(0, 0, 0);
-  doc.rect(boxX, boxY, boxW, rowH * 4 + 2);
+  doc.rect(boxX, boxY, boxW, rowH * summaryRows.length + 2);
   const summaryRows = [
-    ["Subtotal", formatTzs(invoice.total)],
-    ["Total Amount", `${formatTzs(invoice.total)} TZS`],
+    ["Subtotal", `${formatTzs(amounts.subtotal)} TZS`],
+    ...(options?.vatEnabled ? [["VAT (18%)", `${formatTzs(amounts.vat)} TZS`] as const] : []),
+    ["Total Amount", `${formatTzs(amounts.total)} TZS`],
     ["Amount Paid", formatTzs(amountPaid)],
     ["Balance Due", formatTzs(balanceDue)],
   ] as const;
